@@ -41,9 +41,14 @@ Change Log
   dependant)
 - [FIXED] a bug in the redispatching that lead to modification of the setpoint for redispatching even if the
   action was illegal in certain cases.
+- [FIXED] some surprising behaviors could appear if `BaseEnv.fast_forward_chronics` was used. This is now fixed.
 - [ADDED] more flexibilities in `IdToAct` converter not to generate every action for both set and change for example.
   This class can also serialize and de serialize the list of all actions with the save method (to serialize) and the
   `init_converter` method (to read back the data).
+- [ADDED] a even more convenient way to get information about redispatching (see "info_redispatching" argument of the
+  info return value)
+- [UPDATED] improve quality of error when redispatching is not valid.
+
 
 [0.8.2] - 2020-05-13
 ----------------------
