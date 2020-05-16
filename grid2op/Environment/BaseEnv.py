@@ -373,13 +373,7 @@ class BaseEnv(GridObjects, ABC):
         return res
 
     def _aux_redisp(self, redisp_act, target_p, avail_gen, previous_redisp):
-        # ADDED
-        target_if_all_fine = target_p + redisp_act
-        target_if_all_fine[~avail_gen] += previous_redisp[~avail_gen]
-        delta_if_all_fine = target_if_all_fine - self.gen_activeprod_t_redisp
-        # delta_gen_min
-        # END ADDED
-
+        # don't touch as it's working...
         delta_gen_min = np.maximum(-self.gen_max_ramp_down + previous_redisp,
                                    self.gen_pmin - (target_p - previous_redisp))
         delta_gen_max = np.minimum(self.gen_max_ramp_up + previous_redisp,
@@ -403,6 +397,55 @@ class BaseEnv(GridObjects, ABC):
             # i don't need to modify anything so i should be good
             new_redisp = 0.0 * redisp_act
         else:
+            new_redisp, except_ = self._aux_aux_redisp(delta_gen_min,
+                                                       delta_gen_max,
+                                                       avail_gen,
+                                                       redisp_act,
+                                                       val_sum)
+
+        return new_redisp, except_
+
+    def _aux_redisp_zerosum(self, redisp_act, target_p, avail_gen, previous_redisp, nofail=False):
+        delta_gen_min = np.maximum(-self.gen_max_ramp_down + previous_redisp,
+                                   self.gen_pmin - (target_p - previous_redisp))
+        delta_gen_max = np.minimum(self.gen_max_ramp_up + previous_redisp,
+                                   self.gen_pmax - (target_p - previous_redisp))
+
+        min_disp = np.sum(delta_gen_min[avail_gen])
+        max_disp = np.sum(delta_gen_max[avail_gen])
+        new_redisp = None
+        except_ = None
+        val_sum = +np.sum(redisp_act[avail_gen])-np.sum(redisp_act)
+        compute_redisp = True
+        if val_sum < min_disp - self._tol_poly:
+            if nofail is True:
+                self.actual_dispatch *= min_disp / val_sum
+                redisp_act *= min_disp / val_sum
+                val_sum = min_disp
+                compute_redisp = True
+            else:
+                except_ = InvalidRedispatching("Impossible to perform this redispatching. Minimum ramp (or pmin) for "
+                                               "available generators is not enough to absord "
+                                               "{}MW. min possible is {}MW".format(val_sum, min_disp))
+                compute_redisp = False
+        elif val_sum > max_disp + self._tol_poly:
+            if nofail is True:
+                self.actual_dispatch *= max_disp / val_sum
+                redisp_act *= max_disp / val_sum
+                compute_redisp = True
+                val_sum = max_disp
+            else:
+                except_ = InvalidRedispatching("Impossible to perform this redispatching. Maximum ramp (or pmax) for "
+                                               "available generators is not enough to absord "
+                                               "{}MW, max possible is {}MW".format(val_sum, max_disp))
+                compute_redisp = False
+
+        elif np.abs(val_sum) <= self._tol_poly:
+            # i don't need to modify anything so i should be good
+            new_redisp = 0.0 * redisp_act
+            compute_redisp = False
+
+        if compute_redisp:
             new_redisp, except_ = self._aux_aux_redisp(delta_gen_min,
                                                        delta_gen_max,
                                                        avail_gen,
@@ -438,12 +481,14 @@ class BaseEnv(GridObjects, ABC):
         # self.actual_dispatch[avail_gen] = actual_dispatch_tmp
         return new_redisp, except_
 
-    def _get_redisp_zero_sum(self, redisp_this_act, p_t1):
+    def _get_redisp_zero_sum(self, redisp_this_act, p_t1, no_redisp):
         """
 
         Parameters
         ----------
-
+        no_redisp: ``bool``
+            whether or not a redispatching action was perform. If no_redsip is true, then this function can change
+            actual dispatch to meet the new constraint and will never fail.
 
         Returns
         -------
@@ -466,22 +511,21 @@ class BaseEnv(GridObjects, ABC):
 
         # get back the previous value for the dispatchable generators
         target_disp = 1.0 * self.target_dispatch
-
-        # target_disp[avail_gen] += self.actual_dispatch[avail_gen]  # I modified that
-
-        # target_disp[avail_gen] = self.actual_dispatch[avail_gen]
-        new_redisp, except_ = self._aux_redisp(target_disp,
-                                               p_t1,
-                                               avail_gen,
-                                               self.actual_dispatch)
+        new_redisp, except_ = self._aux_redisp_zerosum(target_disp,
+                                                       p_t1,
+                                                       avail_gen,
+                                                       self.actual_dispatch)
         if except_ is None:
             new_redisp += self.target_dispatch
-        if new_redisp is not None:
-            pass
-            # print("new_redisp: {}".format(new_redisp[self.gen_redispatchable]))
-        else:
-            pass
-            # pdb.set_trace()
+        elif no_redisp:
+            # there was an error but the actual dispatch has not been modified
+            new_redisp, except_ = self._aux_redisp_zerosum(target_disp,
+                                                           p_t1,
+                                                           avail_gen,
+                                                           self.actual_dispatch,
+                                                           nofail=True)
+            new_redisp += self.target_dispatch
+
         return new_redisp, except_
 
     def _compute_actual_dispatch(self, new_p):
@@ -599,7 +643,13 @@ class BaseEnv(GridObjects, ABC):
         if np.all(redisp_act_orig == 0.) and np.all(self.target_dispatch == 0.) and np.all(self.actual_dispatch == 0.):
             return except_, info_
 
-        self.target_dispatch += redisp_act_orig
+        # added the "untouch_gen" part
+        already_modified_gen = self.target_dispatch != 0.
+        self.target_dispatch[already_modified_gen] += redisp_act_orig[already_modified_gen]
+        first_modified = (~already_modified_gen) & (redisp_act_orig != 0)
+        self.target_dispatch[first_modified] = self.actual_dispatch[first_modified] + redisp_act_orig[first_modified]
+        already_modified_gen |= first_modified
+
         # check that everything is consistent with pmin, pmax:
         if np.any(self.target_dispatch > self.gen_pmax - self.gen_pmin):
             # action is invalid, the target redispatching would be above pmax for at least a generator
@@ -641,10 +691,15 @@ class BaseEnv(GridObjects, ABC):
 
         # get the target redispatching (cumulation starting from the first element of the scenario)test_
         # redispatch_act_above_pmax
+        mismatch = self.actual_dispatch[already_modified_gen] - self.target_dispatch[already_modified_gen]
+        mismatch = np.abs(mismatch)
         if np.abs(np.sum(self.actual_dispatch)) >= self._tol_poly or \
-                np.sum(np.abs(self.actual_dispatch - self.target_dispatch)) >= self._tol_poly:
+                   np.sum(mismatch) >= self._tol_poly:
             # make sure the redispatching action is zero sum
-            new_redisp, except_ = self._get_redisp_zero_sum(redisp_act_orig_cut, new_p)
+            new_redisp, except_ = self._get_redisp_zero_sum(redisp_act_orig_cut,
+                                                            new_p,
+                                                            no_redisp=np.sum(np.abs(redisp_act_orig)) == 0.
+                                                            )
             if except_ is not None:
                 # if there is an error, then remove the above "action" and propagate it
                 self.actual_dispatch = previous_redisp
@@ -652,6 +707,8 @@ class BaseEnv(GridObjects, ABC):
                 return except_, info_
             else:
                 self.actual_dispatch = new_redisp
+
+
         return except_, info_
 
     def _update_actions(self):
