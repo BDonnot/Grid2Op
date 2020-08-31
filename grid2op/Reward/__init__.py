@@ -16,7 +16,8 @@ __all__ = [
     "RewardHelper",
     "BaseReward",
     # TODO it would be better to have a specific package for this, but in the mean time i put it here
-    "L2RPNSandBoxScore"
+    "L2RPNSandBoxScore",
+    "NMinusOneReward"
 ]
 
 from grid2op.Reward.ConstantReward import ConstantReward
@@ -36,6 +37,7 @@ from grid2op.Reward.CombinedScaledReward import CombinedScaledReward
 from grid2op.Reward.RewardHelper import RewardHelper
 from grid2op.Reward.BaseReward import BaseReward
 from grid2op.Reward.L2RPNSandBoxScore import L2RPNSandBoxScore
+from grid2op.Reward.NMinusOneReward import NMinusOneReward
 
 import warnings
 
