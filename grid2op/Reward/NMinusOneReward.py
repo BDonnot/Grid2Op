@@ -12,25 +12,35 @@ from grid2op.Reward.BaseReward import BaseReward
 from grid2op.dtypes import dt_float
 
 class NMinusOneReward(BaseReward):
-    def __init__(self, rho_threshold=2):
+    def __init__(self):
         BaseReward.__init__(self)
         self.reward_min = None
         self.reward_max = None
         self.attackable_line_ids = None
-        self.rho_threshold = dt_float(rho_threshold)
 
     def initialize(self, env):
         self.reward_min = dt_float(0)
         self.reward_max = dt_float(1)
-        self.attackable_line_ids = list(range(env.n_line)) ##################################################
+        self.attackable_line_ids = np.arange(env.n_line)
+        if env.name == 'l2rpn_neurips_2020_track1_warmup':
+            self.attackable_line_ids = np.array([0, 9, 13, 14, 18, 23, 27, 39, 45, 56])
 
     def __call__(self,  action, env, has_error, is_done, is_illegal, is_ambiguous):
         if is_done:
             return self.reward_min
 
-        obs = env.get_obs()
-        rho_reward = np.maximum(self.rho_threshold - np.maximum(obs.rho, 1), 0)
-        rho_reward /= self.rho_threshold - 1
-        reward = dt_float(rho_reward.mean())
+        subrewards = []
+        this_backend = env.backend.copy()
+        for line_id in self.attackable_line_ids:
+            this_backend._disconnect_line(line_id)
+            this_backend.next_grid_state(env)
+            rho = this_backend.get_relative_flow()
+            this_backend._reconnect_line(line_id)
+            if np.isnan(rho).any():
+                continue
 
-        return reward
+            sum_overflows = (rho > 1).sum()
+            rho_reward = 1 - sum_overflows / env.n_line
+            subrewards.append(rho_reward)
+
+        return dt_float(np.min(subrewards))
