@@ -30,12 +30,11 @@ class NMinusOneReward(BaseReward):
             return self.reward_min
 
         subrewards = []
-        this_backend = env.backend.copy()
         for line_id in self.attackable_line_ids:
+            this_backend = env.backend.copy()
             this_backend._disconnect_line(line_id)
             this_backend.next_grid_state(env)
             rho = this_backend.get_relative_flow()
-            this_backend._reconnect_line(line_id)
             if np.isnan(rho).any():
                 continue
 
