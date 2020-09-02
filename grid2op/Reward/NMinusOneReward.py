@@ -42,4 +42,7 @@ class NMinusOneReward(BaseReward):
             rho_reward = 1 - sum_overflows / env.n_line
             subrewards.append(rho_reward)
 
+        if not subrewards:
+            return self.reward_min
+
         return dt_float(np.min(subrewards))
