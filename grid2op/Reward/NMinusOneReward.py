@@ -46,6 +46,7 @@ class NMinusOneReward(BaseReward):
             act = env.backend.get_action_to_set()
             for l_id in self.attackable_line_ids:
                 this_n1 = copy.deepcopy(act)
+                # this_n1.update({"set_line_status": [(l_id, -1)]})  # TODO fix that for the action
                 # this_n1 += env.action_space({"set_line_status": [(l_id, -1)]})  # TODO fix that for the action
                 self.backend_action += this_n1
                 self.backend.apply_action(self.backend_action)
