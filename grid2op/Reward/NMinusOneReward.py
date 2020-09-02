@@ -36,13 +36,10 @@ class NMinusOneReward(BaseReward):
             this_backend.next_grid_state(env)
             rho = this_backend.get_relative_flow()
             if np.isnan(rho).any():
-                continue
+                return self.reward_min
 
             sum_overflows = (rho > 1).sum()
             rho_reward = 1 - sum_overflows / env.n_line
             subrewards.append(rho_reward)
-
-        if not subrewards:
-            return self.reward_min
 
         return dt_float(np.min(subrewards))
