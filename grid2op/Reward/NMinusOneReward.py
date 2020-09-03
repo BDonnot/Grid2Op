@@ -22,6 +22,7 @@ class NMinusOneReward(BaseReward):
         self.attackable_line_ids = None
         self.backend = None
         self.backend_action = None
+        self.action_space = None
 
     def initialize(self, env):
         self.reward_min = dt_float(0)
@@ -39,8 +40,8 @@ class NMinusOneReward(BaseReward):
         if is_done:
             return self.reward_min
 
-        subrewards = [1.0]
-        if env.action_space is not None:
+        subrewards = [self.reward_max]
+        if True: # env.action_space is not None:
             # i skip the initial time step anyway
             self.backend.set_thermal_limit(env.get_thermal_limit())
             act = env.backend.get_action_to_set()
@@ -60,8 +61,6 @@ class NMinusOneReward(BaseReward):
                 self.backend_action.reset()
                 if conv:
                     rho = self.backend.get_relative_flow()
-                    if np.isnan(rho).any():
-                        subrewards = [0.]
                     sum_overflows = (rho > 1).sum()
                     rho_reward = 1 - sum_overflows / env.n_line
                     subrewards.append(rho_reward)
@@ -72,7 +71,8 @@ class NMinusOneReward(BaseReward):
                     # if there is a divergence, score is -1
                     # otherwise the score is 1
                     # and at the end sum the scores
-                    subrewards.append(0.)
+                    subrewards.append(self.reward_min)
 
         res = dt_float(np.min(subrewards))
         return res
+
