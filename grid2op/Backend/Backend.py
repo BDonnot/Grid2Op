@@ -844,15 +844,14 @@ class Backend(GridObjects, ABC):
         line_status = 2 * line_status - 1
         line_status = line_status.astype(dt_int)
         topo_vect = self.get_topo_vect()
+
         prod_p, _, prod_v = self.generators_info()
         load_p, load_q, _ = self.loads_info()
         complete_action_class = CompleteAction.init_grid(self)
-        set_me = complete_action_class(self)
-        set_me.update({"set_line_status": line_status,
-                       "set_bus": topo_vect})
+        set_me = complete_action_class()
+        set_me.update({"set_line_status": 1 * line_status,
+                       "set_bus": 1 * topo_vect})
 
-        #injs = {"prod_p": prod_p, "prod_v": prod_v,
-        #              "load_p": load_p, "load_q": load_q}}
-
-        # set_me.update({"injection": injs})
+        injs = {"prod_p": prod_p, "prod_v": prod_v, "load_p": load_p, "load_q": load_q}
+        set_me.update({"injection": injs})
         return set_me
