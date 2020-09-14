@@ -20,11 +20,12 @@ class NMinusOneReward(BaseReward):
         BaseReward.__init__(self)
         self.reward_min = None
         self.reward_max = None
-        self.exponential_reward_decay = 0.5
+        self.exp_top_x = 0.2
+        self.exp_p = 0.95
+        self.exp_lbda = None
         self.attackable_line_ids = None
         self.backend = None
         self.backend_action = None
-        self.action_space = None
 
     def initialize(self, env):
         self.reward_min = dt_float(0)
@@ -43,6 +44,26 @@ class NMinusOneReward(BaseReward):
         bridges = list(nx.bridges(G))
         # consider all disconnections except the ones that would break the graph
         self.attackable_line_ids = [i for i, e in enumerate(edges) if e not in bridges]
+
+        n = len(self.attackable_line_ids)
+        self.exp_lbda = self._find_lambda(n, round(n * self.exp_top_x), self.exp_p)
+
+    @staticmethod
+    def _find_lambda(n, m, p, epsilon=1e-5):
+        """ Dichotomy """
+        lbda_min = 0
+        lbda_max = 100
+        while lbda_max - lbda_min > epsilon:
+            lbda = (lbda_min + lbda_max) / 2
+            weights = np.exp(np.linspace(0, 1, n) * -lbda)
+            weights /= weights.sum()
+            measure = weights[:m].sum()
+            if measure > p:
+                lbda_max = lbda
+            else:
+                lbda_min = lbda
+    
+        return lbda
 
     def __call__(self,  action, env, has_error, is_done, is_illegal, is_ambiguous):
         if is_done:
@@ -81,7 +102,7 @@ class NMinusOneReward(BaseReward):
                 subrewards.append(self.reward_min)
 
         subrewards = np.sort(subrewards)
-        weights = np.exp(np.arange(len(subrewards)) * -self.exponential_reward_decay)
+        weights = np.exp(np.linspace(0, 1, len(subrewards)) * -self.exp_lbda)
         res = dt_float((subrewards * weights / weights.sum()).sum())
 
         return res
