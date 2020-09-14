@@ -16,13 +16,13 @@ from grid2op.Reward.BaseReward import BaseReward
 
 
 class NMinusOneReward(BaseReward):
-    def __init__(self):
+    def __init__(self, exp_lbda=None):
         BaseReward.__init__(self)
         self.reward_min = None
         self.reward_max = None
         self.exp_top_x = 0.2
         self.exp_p = 0.95
-        self.exp_lbda = None
+        self.exp_lbda = exp_lbda
         self.attackable_line_ids = None
         self.backend = None
         self.backend_action = None
@@ -46,13 +46,12 @@ class NMinusOneReward(BaseReward):
         self.attackable_line_ids = [i for i, e in enumerate(edges) if e not in bridges]
 
         n = len(self.attackable_line_ids)
-        self.exp_lbda = self._find_lambda(n, round(n * self.exp_top_x), self.exp_p)
+        if self.exp_lbda is None:
+            self.exp_lbda = self._find_lambda(n, round(n * self.exp_top_x), self.exp_p)
 
     @staticmethod
-    def _find_lambda(n, m, p, epsilon=1e-5):
+    def _find_lambda(n, m, p, epsilon=1e-5, lbda_min=0, lbda_max=100):
         """ Dichotomy """
-        lbda_min = 0
-        lbda_max = 100
         while lbda_max - lbda_min > epsilon:
             lbda = (lbda_min + lbda_max) / 2
             weights = np.exp(np.linspace(0, 1, n) * -lbda)
