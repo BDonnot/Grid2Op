@@ -7,10 +7,11 @@
 # This file is part of Grid2Op, Grid2Op a testbed platform to model sequential decision making in power systems.
 
 import tempfile
+import warnings
 import pdb
 
+import grid2op
 from grid2op.tests.helper_path_test import *
-
 from grid2op.Exceptions import *
 from grid2op.Chronics import Multifolder
 from grid2op.Reward import L2RPNReward
@@ -18,6 +19,16 @@ from grid2op.Backend import PandaPowerBackend
 from grid2op.Runner import Runner
 from grid2op.Episode import EpisodeData
 from grid2op.dtypes import dt_float
+from grid2op.Agent import BaseAgent
+from grid2op.Action import TopologyAction
+from grid2op.Parameters import Parameters
+from grid2op.MakeEnv import make
+from grid2op.Opponent.BaseActionBudget import BaseActionBudget
+from grid2op.Opponent import RandomLineOpponent
+
+
+
+
 
 DEBUG = True
 PATH_ADN_CHRONICS_FOLDER = os.path.abspath(os.path.join(PATH_CHRONICS, "test_multi_chronics"))
@@ -70,6 +81,36 @@ class TestEpisodeData(unittest.TestCase):
                              max_iter=self.max_iter,
                              name_env="test_episodedata_env")
 
+    def test_load_ambiguous(self):
+        f = tempfile.mkdtemp()
+
+        class TestSuitAgent(BaseAgent):
+            def __init__(self, *args, **kwargs):
+                BaseAgent.__init__(self, *args, **kwargs)
+
+            def act(self, observation, reward, done=False):
+                # do a ambiguous action
+                return self.action_space({"set_line_status": [(0, 1)],
+                                          "change_line_status": [0]}
+                                         )
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            with grid2op.make("rte_case14_test", test=True) as env:
+                my_agent = TestSuitAgent(env.action_space)
+                runner = Runner(**env.get_params_for_runner(),
+                                agentClass=None,
+                                agentInstance=my_agent)
+
+                # test that the right seeds are assigned to the agent
+                res = runner.run(nb_episode=1,
+                                 max_iter=self.max_iter,
+                                 path_save=f)
+            episode_data = EpisodeData.from_disk(agent_path=f, name=res[0][1])
+        assert int(episode_data.meta["chronics_max_timestep"]) == self.max_iter
+        assert len(episode_data.actions) == self.max_iter
+        assert len(episode_data.observations) == self.max_iter + 1
+
     def test_one_episode_with_saving(self):
         f = tempfile.mkdtemp()
         episode_name, cum_reward, timestep = self.runner.run_one_episode(path_save=f)
@@ -104,6 +145,42 @@ class TestEpisodeData(unittest.TestCase):
             assert int(episode_data.meta["chronics_max_timestep"]) == self.max_iter
             assert np.abs(
                 dt_float(episode_data.meta["cumulative_reward"]) - self.real_reward) <= self.tol_one
+
+    def test_with_opponent(self):
+        init_budget = 1000
+        opponent_attack_duration = 15
+        opponent_attack_cooldown = 30
+        opponent_budget_per_ts = 0.
+        opponent_action_class = TopologyAction
+
+        LINES_ATTACKED = ["1_3_3", "1_4_4", "3_6_15", "9_10_12", "11_12_13", "12_13_14"]
+
+        p = Parameters()
+        p.NO_OVERFLOW_DISCONNECTION = True
+        env = make("rte_case14_realistic",
+                   test=True, param=p,
+                   opponent_init_budget=init_budget,
+                   opponent_budget_per_ts=opponent_budget_per_ts,
+                   opponent_attack_cooldown=opponent_attack_cooldown,
+                   opponent_attack_duration=opponent_attack_duration,
+                   opponent_action_class=opponent_action_class,
+                   opponent_budget_class=BaseActionBudget,
+                   opponent_class=RandomLineOpponent,
+                   kwargs_opponent={
+                       "lines_attacked": LINES_ATTACKED
+                   })
+        env.seed(0)
+        runner = Runner(**env.get_params_for_runner())
+
+        f = tempfile.mkdtemp()
+        res = runner.run(nb_episode=1,
+                         env_seeds=[4], agent_seeds=[0],
+                         max_iter=opponent_attack_cooldown - 1,
+                         path_save=f)
+
+        episode_data = EpisodeData.from_disk(agent_path=f, name=res[0][1])
+        lines_impacted, subs_impacted = episode_data.attacks[0].get_topological_impact()
+        assert lines_impacted[3]
 
 
 if __name__ == "__main__":
