@@ -16,12 +16,15 @@ from grid2op.Reward.BaseReward import BaseReward
 
 
 class NMinusOneReward(BaseReward):
+    """
+    The goal of this reward is to mimic what we want to maximize in the N-1 problem.
+    """
     def __init__(self, exp_lbda=None):
         BaseReward.__init__(self)
         self.reward_min = None
         self.reward_max = None
         self.exp_top_x = 0.2
-        self.exp_p = 0.95
+        self.exp_p = 0.95 # This means that a total weight exp_p is assigned to the exp_top_x worst N-1
         self.exp_lbda = exp_lbda
         self.attackable_line_ids = None
         self.backend = None
@@ -51,7 +54,9 @@ class NMinusOneReward(BaseReward):
 
     @staticmethod
     def _find_lambda(n, m, p, epsilon=1e-5, lbda_min=0, lbda_max=100):
-        """ Dichotomy """
+        """
+        Dichotomy to find the according lambda paramater
+        """
         while lbda_max - lbda_min > epsilon:
             lbda = (lbda_min + lbda_max) / 2
             weights = np.exp(np.linspace(0, 1, n) * -lbda)
@@ -65,6 +70,10 @@ class NMinusOneReward(BaseReward):
         return lbda
 
     def __call__(self,  action, env, has_error, is_done, is_illegal, is_ambiguous):
+        """
+        Simulates each disconnection and records the according stability.
+        Returns a weighted mean of these stabilities, according to the weights.
+        """
         if is_done:
             return self.reward_min
 
