@@ -226,6 +226,14 @@ test_make_plot_injj.ipynb
 plot_inj_prez_gdrive.ipynb
 where_i_want_to_save_it/
 test_issue147.py
+test_rllib.py
+bug_neg_prod.py
+test_ray/
+test.py
+getting_started/chronics_educ/
+grid2op/data/educ_case14_redisp/
+getting_started/prepare_env_aub.ipynb
+test_log_122/
 
 # profiling files
 **.prof

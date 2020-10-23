@@ -7,14 +7,36 @@
 # This file is part of Grid2Op, Grid2Op a testbed platform to model sequential decision making in power systems.
 
 import io
+import copy
 import numpy as np
 
+import matplotlib.pyplot as plt
 from matplotlib.path import Path
 
 from grid2op.PlotGrid.BasePlot import BasePlot
 from grid2op.PlotGrid.PlotUtil import PlotUtil as pltu
 import matplotlib.patches as patches
 from matplotlib.lines import Line2D
+
+
+class GenDraw(patches.CirclePolygon):
+    """
+    .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
+
+    Empty class to handle the legend
+    """
+    def __init__(self, *args, resolution=5, **kwargs):
+        patches.CirclePolygon.__init__(self, *args, resolution=resolution, **kwargs)
+
+
+class LoadDraw(patches.CirclePolygon):
+    """
+    .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
+
+    Empty class to handle the legend
+    """
+    def __init__(self, *args, resolution=3, **kwargs):
+        patches.CirclePolygon.__init__(self, *args, resolution=resolution, **kwargs)
 
 
 class PlotMatplot(BasePlot):
@@ -113,9 +135,11 @@ class PlotMatplot(BasePlot):
                  load_radius=8,
                  load_name=False,
                  load_id=False,
+                 load_resolution=3,  # number of edges of the polygon representing the generator
                  gen_radius=8,
                  gen_name=False,
                  gen_id=False,
+                 gen_resolution=5,  # number of edges of the polygon representing the generator
                  line_name=False,
                  line_id=False):
         self.dpi = dpi
@@ -131,24 +155,32 @@ class PlotMatplot(BasePlot):
         self._load_id = load_id
         self._load_face_color = "w"
         self._load_edge_color = "orange"
+        self._load_resolution = load_resolution
+        self._load_patch = self._load_patch_default
         self._load_txt_color = "black"
         self._load_line_color = "black"
         self._load_line_width = 1
         
-        self._gen_radius = gen_radius
+        self._gen_radius_orig = gen_radius
+        self._gen_radius = None  # init in self.restore_gen_palette()
+        self._gen_resolution = gen_resolution
+        self._gen_patch = self._gen_patch_default
         self._gen_name = gen_name
         self._gen_id = gen_id
         self._gen_face_color = "w"
-        self._gen_edge_color = "green"
+        self._gen_edge_color_orig = "green"
+        self._gen_edge_color = None
+        self.restore_gen_palette()
         self._gen_txt_color = "black"
         self._gen_line_color = "black"
         self._gen_line_width = 1
 
-        #cx = np.linspace(0.0, 0.70, 10)
-        #self._line_color_scheme = cm.get_cmap("inferno")(cx)
         self._line_name = line_name
         self._line_id = line_id
-        self._line_color_scheme = ["blue", "orange", "red"]
+        self._line_color_scheme_orig = ["blue", "orange", "red"]
+        self._line_color_scheme = None
+        self.restore_line_palette()
+
         self._line_color_width = 1
         self._line_bus_radius = bus_radius
         self._line_bus_face_colors = ["black", "red", "lime"]
@@ -159,6 +191,18 @@ class PlotMatplot(BasePlot):
         self.xpad = 5
         self.ylim = [0, 0]
         self.ypad = 5
+
+    def _gen_patch_default(self, xy, radius, edgecolor, facecolor):
+        """default patch used to draw generator"""
+        # TODO maybe make a better version of this
+        patch = GenDraw(xy, radius=radius, edgecolor=edgecolor, facecolor=facecolor, resolution=self._gen_resolution)
+        return patch
+
+    def _load_patch_default(self, xy, radius, edgecolor, facecolor):
+        """default patch used to draw generator"""
+        # TODO maybe make a better version of this
+        patch = LoadDraw(xy, radius=radius, edgecolor=edgecolor, facecolor=facecolor, resolution=self._load_resolution)
+        return patch
 
     def _v_textpos_from_dir(self, dirx, diry):
         if diry > 0:
@@ -245,10 +289,10 @@ class PlotMatplot(BasePlot):
                      fontsize='x-small')
 
     def _draw_load_circle(self, pos_x, pos_y):
-        patch = patches.Circle((pos_x, pos_y),
-                               radius=self._load_radius,
-                               facecolor=self._load_face_color,
-                               edgecolor=self._load_edge_color)
+        patch = self._load_patch((pos_x, pos_y),
+                                 radius=self._load_radius,
+                                 facecolor=self._load_face_color,
+                                 edgecolor=self._load_edge_color)
         self.ax.add_patch(patch)
     
     def _draw_load_line(self, pos_x, pos_y, sub_x, sub_y):
@@ -324,11 +368,11 @@ class PlotMatplot(BasePlot):
                      horizontalalignment=ha,
                      verticalalignment=va)
 
-    def _draw_gen_circle(self, pos_x, pos_y):
-        patch = patches.Circle((pos_x, pos_y),
-                               radius=self._gen_radius,
-                               edgecolor=self._gen_edge_color,
-                               facecolor=self._gen_face_color)
+    def _draw_gen_circle(self, pos_x, pos_y, gen_edgecolor):
+        patch = self._gen_patch((pos_x, pos_y),
+                                radius=self._gen_radius,
+                                edgecolor=gen_edgecolor,
+                                facecolor=self._gen_face_color)
         self.ax.add_patch(patch)
     
     def _draw_gen_line(self, pos_x, pos_y, sub_x, sub_y):
@@ -373,21 +417,36 @@ class PlotMatplot(BasePlot):
         self.xlim[1] = max(self.xlim[1], pos_x + self._gen_radius)
         self.ylim[0] = min(self.ylim[0], pos_y - self._gen_radius)
         self.ylim[1] = max(self.ylim[1], pos_y + self._gen_radius)
-        self._draw_gen_line(pos_x, pos_y, sub_x, sub_y)
-        self._draw_gen_circle(pos_x, pos_y)
-        gen_txt = ""
-        if self._gen_name:
-            gen_txt += "\"{}\":\n".format(gen_name)
-        if self._gen_id:
-            gen_txt += "id: {}\n".format(gen_id)
-        if gen_value is not None:
-            gen_txt += pltu.format_value_unit(gen_value, gen_unit)
-        if gen_txt:
-            self._draw_gen_txt(pos_x, pos_y, sub_x, sub_y, gen_txt)
-        self._draw_gen_name(pos_x, pos_y, str(gen_id))
-        gen_dir_x, gen_dir_y = pltu.norm_from_points(sub_x, sub_y,
-                                                     pos_x, pos_y)
-        self._draw_gen_bus(sub_x, sub_y, gen_dir_x, gen_dir_y, gen_bus)
+        hide = False
+        if isinstance(self._gen_edge_color, str):
+            # case where the color of the generator is a string (same color for all generators)
+            gen_color = self._gen_edge_color
+        else:
+            my_val = observation.prod_p[gen_id]
+            n_colors = len(self._gen_edge_color) - 1
+            if np.isfinite(my_val):
+                color_idx = max(0, min(n_colors, int(my_val * n_colors)))
+            else:
+                color_idx = 0
+                hide = True
+            gen_color = self._gen_edge_color[color_idx]
+
+        if not hide:
+            self._draw_gen_line(pos_x, pos_y, sub_x, sub_y)
+            self._draw_gen_circle(pos_x, pos_y, gen_color)
+            gen_txt = ""
+            if self._gen_name:
+                gen_txt += "\"{}\":\n".format(gen_name)
+            if self._gen_id:
+                gen_txt += "id: {}\n".format(gen_id)
+            if gen_value is not None:
+                gen_txt += pltu.format_value_unit(gen_value, gen_unit)
+            if gen_txt:
+                self._draw_gen_txt(pos_x, pos_y, sub_x, sub_y, gen_txt)
+            self._draw_gen_name(pos_x, pos_y, str(gen_id))
+            gen_dir_x, gen_dir_y = pltu.norm_from_points(sub_x, sub_y,
+                                                         pos_x, pos_y)
+            self._draw_gen_bus(sub_x, sub_y, gen_dir_x, gen_dir_y, gen_bus)
 
     def update_gen(self, figure, observation,
                    gen_id, gen_name, gen_bus,
@@ -465,7 +524,88 @@ class PlotMatplot(BasePlot):
                                    edgecolor=color,
                                    facecolor=color)
         self.ax.add_patch(patch)
-    
+
+    def assign_line_palette(self, palette_name="YlOrRd", nb_color=10):
+        """
+        Assign a new color palette when you want to plot information on the powerline.
+
+        Parameters
+        ----------
+        palette_name: ``str``
+            Name of the Maplotlib.plyplot palette to use (name forwarded to `plt.get_cmap(palette_name)`)
+        nb_color: ``int``
+            Number of color to use
+
+        Examples
+        -------
+        .. code-block:: python
+
+            # color a grid based on the value of the thermal limit
+            plot_helper.assign_line_palette(nb_color=100)
+
+            # plot this grid
+            _ = plot_helper.plot_info(line_values=env.get_thermal_limit(), line_unit="A", coloring="line")
+
+            # restore the default coloring (["blue", "orange", "red"])
+            plot_helper.restore_line_palette()
+
+        Notes
+        -----
+        Some palette are available there `colormaps <https://matplotlib.org/tutorials/colors/colormaps.html>`_
+
+        """
+        palette = plt.get_cmap(palette_name)
+        cols = []
+        for i in range(1, nb_color+1):
+            cols.append(palette(i / nb_color))
+        self._line_color_scheme = cols
+
+    def restore_line_palette(self):
+        self._line_color_scheme = self._line_color_scheme_orig
+
+    def assign_gen_palette(self, palette_name="YlOrRd", nb_color=10, increase_gen_size=None):
+        """
+        Assign a new color palette when you want to plot information on the generator.
+
+        Parameters
+        ----------
+        palette_name: ``str``
+            Name of the Maplotlib.plyplot palette to use (name forwarded to `plt.get_cmap(palette_name)`)
+        nb_color: ``int``
+            Number of color to use
+
+        increase_gen_size: ``int``
+            Whether or not to increase the generator sizes (``None`` to disable this feature, 1 has no effect)
+        Examples
+        -------
+        .. code-block:: python
+
+            # color a grid based on the value of the thermal limit
+            plot_helper.assign_gen_palette(nb_color=100)
+
+            # plot this grid
+            _ = plot_helper.plot_info(gen_values=env.gen_pmax, coloring="gen")
+
+            # restore the default coloring (all green)
+            plot_helper.restore_gen_palette()
+
+        Notes
+        -----
+        Some palette are available there `colormaps <https://matplotlib.org/tutorials/colors/colormaps.html>`_
+
+        """
+        palette = plt.get_cmap(palette_name)
+        cols = []
+        for i in range(1, nb_color+1):
+            cols.append(palette(i / nb_color))
+        self._gen_edge_color = cols
+        if increase_gen_size is not None:
+            self._gen_radius = increase_gen_size * self._gen_radius_orig
+
+    def restore_gen_palette(self):
+        self._gen_edge_color = self._gen_edge_color_orig
+        self._gen_radius = self._gen_radius_orig
+
     def draw_powerline(self, figure, observation,
                        line_id, line_name, connected,
                        line_value, line_unit,
@@ -473,42 +613,49 @@ class PlotMatplot(BasePlot):
                        ex_bus, pos_ex_x, pos_ex_y):
         rho = observation.rho[line_id]
         n_colors = len(self._line_color_scheme) - 1
-        color_idx = max(0, min(n_colors, int(rho * n_colors)))
-        color = "black"
-        if connected and rho > 0.0:
-            color = self._line_color_scheme[color_idx]
-        line_style = "-" if connected else "--"
-        self._draw_powerline_line(pos_or_x, pos_or_y,
-                                  pos_ex_x, pos_ex_y,
-                                  color, line_style)
-        # Deal with line text configurations
-        txt = ""
-        if self._line_name:
-            txt += "\"{}\"\n".format(line_name)
-        if self._line_id:
-            txt += "id: {}\n".format(str(line_id))
-        if line_value is not None:
-            txt += pltu.format_value_unit(line_value, line_unit)
-        if txt:
-            self._draw_powerline_txt(pos_or_x, pos_or_y,
-                                     pos_ex_x, pos_ex_y,
-                                     txt)
+        hide = False
+        if np.isfinite(rho):
+            color_idx = max(0, min(n_colors, int(rho * n_colors)))
+        else:
+            color_idx = 0
+            hide = True
 
-        or_dir_x, or_dir_y = pltu.norm_from_points(pos_or_x, pos_or_y,
-                                                   pos_ex_x, pos_ex_y)
-        self._draw_powerline_bus(pos_or_x, pos_or_y,
-                                 or_dir_x, or_dir_y,
-                                 or_bus)
-        ex_dir_x, ex_dir_y = pltu.norm_from_points(pos_ex_x, pos_ex_y,
-                                                   pos_or_x, pos_or_y)
-        self._draw_powerline_bus(pos_ex_x, pos_ex_y,
-                                 ex_dir_x, ex_dir_y,
-                                 ex_bus)
-        watt_value = observation.p_or[line_id]
-        if rho > 0.0 and watt_value != 0.0:
-            self._draw_powerline_arrow(pos_or_x, pos_or_y,
-                                       pos_ex_x, pos_ex_y,
-                                       color, watt_value)
+        color = "black"
+        if not hide:
+            if connected and rho > 0.0:
+                color = self._line_color_scheme[color_idx]
+            line_style = "-" if connected else "--"
+            self._draw_powerline_line(pos_or_x, pos_or_y,
+                                      pos_ex_x, pos_ex_y,
+                                      color, line_style)
+            # Deal with line text configurations
+            txt = ""
+            if self._line_name:
+                txt += "\"{}\"\n".format(line_name)
+            if self._line_id:
+                txt += "id: {}\n".format(str(line_id))
+            if line_value is not None:
+                txt += pltu.format_value_unit(line_value, line_unit)
+            if txt:
+                self._draw_powerline_txt(pos_or_x, pos_or_y,
+                                         pos_ex_x, pos_ex_y,
+                                         txt)
+
+            or_dir_x, or_dir_y = pltu.norm_from_points(pos_or_x, pos_or_y,
+                                                       pos_ex_x, pos_ex_y)
+            self._draw_powerline_bus(pos_or_x, pos_or_y,
+                                     or_dir_x, or_dir_y,
+                                     or_bus)
+            ex_dir_x, ex_dir_y = pltu.norm_from_points(pos_ex_x, pos_ex_y,
+                                                       pos_or_x, pos_or_y)
+            self._draw_powerline_bus(pos_ex_x, pos_ex_y,
+                                     ex_dir_x, ex_dir_y,
+                                     ex_bus)
+            watt_value = observation.p_or[line_id]
+            if rho > 0.0 and watt_value != 0.0:
+                self._draw_powerline_arrow(pos_or_x, pos_or_y,
+                                           pos_ex_x, pos_ex_y,
+                                           color, watt_value)
         
     def update_powerline(self, figure, observation,
                          line_id, line_name, connected,
@@ -516,6 +663,65 @@ class PlotMatplot(BasePlot):
                          or_bus, pos_or_x, pos_or_y,
                          ex_bus, pos_ex_x, pos_ex_y):
         pass
+
+    def _get_gen_legend(self):
+        """super complex function to display the proper shape in the legend"""
+        if isinstance(self._gen_edge_color, str):
+            gen_legend_col = self._gen_edge_color
+        else:
+            gen_legend_col = self._gen_edge_color[int(len(self._gen_edge_color) / 2)]
+        my_res = self._gen_resolution
+
+        class GenObjectHandler:
+            def legend_artist(self, legend, orig_handle, fontsize, handlebox):
+                xdescent, ydescent = handlebox.xdescent, handlebox.ydescent
+                width, height = handlebox.width, handlebox.height
+                center = 0.5 * width - 0.5 * xdescent, 0.5 * height - 0.5 * ydescent
+                pp_ = GenDraw(xy=center,
+                              radius=min(width, height),
+                              facecolor="w",
+                              edgecolor=gen_legend_col,
+                              transform=handlebox.get_transform(),
+                              resolution=my_res)
+                handlebox.add_artist(pp_)
+                return pp_
+
+        # gen_legend = Line2D([0], [0], color=gen_legend_col, lw=3)
+        gen_legend = self._gen_patch((0, 0),
+                                     facecolor=self._gen_face_color,
+                                     edgecolor=gen_legend_col,
+                                     radius=self._gen_radius,
+                                     )
+        return gen_legend, GenObjectHandler()
+
+    def _get_load_legend(self):
+        """super complex function to display the proper shape in the legend"""
+        if isinstance(self._load_edge_color, str):
+            load_legend_col = self._load_edge_color
+        else:
+            load_legend_col = self._load_edge_color[int(len(self._load_edge_color) / 2)]
+        my_res = self._load_resolution
+
+        class LoadObjectHandler:
+            def legend_artist(self, legend, orig_handle, fontsize, handlebox):
+                xdescent, ydescent = handlebox.xdescent, handlebox.ydescent
+                width, height = handlebox.width, handlebox.height
+                center = 0.5 * width - 0.5 * xdescent, 0.5 * height - 0.5 * ydescent
+                pp_ = LoadDraw(xy=center,
+                               radius=min(width, height),
+                               facecolor="w",
+                               edgecolor=load_legend_col,
+                               transform=handlebox.get_transform(),
+                               resolution=my_res)
+                handlebox.add_artist(pp_)
+                return pp_
+
+        load_legend = self._load_patch((0, 0),
+                                       facecolor=self._gen_face_color,
+                                       edgecolor=load_legend_col,
+                                       radius=self._gen_radius,
+                                       )
+        return load_legend, LoadObjectHandler()
 
     def draw_legend(self, figure, observation):
         title_str = observation.env_name
@@ -525,11 +731,17 @@ class PlotMatplot(BasePlot):
                 observation.month,
                 observation.hour_of_day,
                 observation.minute_of_hour)
+
+        # generate the right legend for generator
+        gen_legend, gen_handler = self._get_gen_legend()
+        # generate the correct legend for load
+        load_legend, load_handler = self._get_load_legend()
+
         legend_help = [
             Line2D([0], [0], color="black", lw=1),
             Line2D([0], [0], color=self._sub_edge_color, lw=3),
-            Line2D([0], [0], color=self._load_edge_color, lw=3),
-            Line2D([0], [0], color=self._gen_edge_color, lw=3),
+            load_legend,
+            gen_legend,
             Line2D([0], [0], marker='o', color=self._line_bus_face_colors[0]),
             Line2D([0], [0], marker='o', color=self._line_bus_face_colors[1]),
             Line2D([0], [0], marker='o', color=self._line_bus_face_colors[2])
@@ -542,7 +754,9 @@ class PlotMatplot(BasePlot):
             "no bus",
             "bus 1",
             "bus 2"
-        ], title=title_str)
+        ],
+                       title=title_str,
+                       handler_map={GenDraw: gen_handler, LoadDraw: load_handler})
         # Hide axis
         self.ax.get_xaxis().set_visible(False)
         self.ax.get_yaxis().set_visible(False)
@@ -557,6 +771,4 @@ class PlotMatplot(BasePlot):
             ymin = self.ylim[0] - self.ypad
             ymax = self.ylim[1] + self.ypad
             self.ax.set_ylim(ymin, ymax)
-            #self.ax.autoscale(enable=False, tight=True)
-            #self.ax.autoscale_view(scalex=False, scaley=False, tight=True)
             figure.tight_layout()
