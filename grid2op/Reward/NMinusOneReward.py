@@ -16,12 +16,17 @@ from grid2op.Reward.BaseReward import BaseReward
 
 
 class NMinusOneReward(BaseReward):
+    """
+    The goal of this reward is to mimic what we want to maximize in the N-1 problem.
+    """
+    log_path = None
+
     def __init__(self, exp_lbda=None):
         BaseReward.__init__(self)
         self.reward_min = None
         self.reward_max = None
         self.exp_top_x = 0.2
-        self.exp_p = 0.95
+        self.exp_p = 0.95 # This means that a total weight exp_p is assigned to the exp_top_x worst N-1
         self.exp_lbda = exp_lbda
         self.attackable_line_ids = None
         self.backend = None
@@ -44,7 +49,6 @@ class NMinusOneReward(BaseReward):
         bridges = list(nx.bridges(G))
         # consider all disconnections except the ones that would break the graph
         self.attackable_line_ids = [i for i, e in enumerate(edges) if e not in bridges]
-        self.attackable_line_ids = [0, 9, 13, 14, 18, 23, 27, 39, 45, 56]
 
         n = len(self.attackable_line_ids)
         if self.exp_lbda is None:
@@ -52,7 +56,9 @@ class NMinusOneReward(BaseReward):
 
     @staticmethod
     def _find_lambda(n, m, p, epsilon=1e-5, lbda_min=0, lbda_max=100):
-        """ Dichotomy """
+        """
+        Dichotomy to find the according lambda paramater
+        """
         while lbda_max - lbda_min > epsilon:
             lbda = (lbda_min + lbda_max) / 2
             weights = np.exp(np.linspace(0, 1, n) * -lbda)
@@ -66,6 +72,10 @@ class NMinusOneReward(BaseReward):
         return lbda
 
     def __call__(self,  action, env, has_error, is_done, is_illegal, is_ambiguous):
+        """
+        Simulates each disconnection and records the according stability.
+        Returns a weighted mean of these stabilities, according to the weights.
+        """
         if is_done:
             return self.reward_min
 
@@ -105,8 +115,8 @@ class NMinusOneReward(BaseReward):
                 # and at the end sum the scores
                 subrewards.append(self.reward_min)
 
-        if '_ObsEnv' not in env.__class__.__name__:
-            f = open('/home/omnesloi/Documents/Scripts_python/log_attacks.txt', 'a')
+        if '_ObsEnv' not in env.__class__.__name__ and self.log_path is not None:
+            f = open(self.log_path, 'a')
             f.write(txt)
             f.close()
         subrewards = np.sort(subrewards)
