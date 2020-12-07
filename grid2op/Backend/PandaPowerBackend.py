@@ -507,6 +507,14 @@ class PandaPowerBackend(Backend):
         """
         return self._big_topo_to_obj[id_big_topo]
 
+    def _vectorized_change_bus(self, dt, colum, to_sub_id, values, changed):
+        tmp_bus = dt[colum]
+        tmp_in_service = dt["in_service"]
+        tmp_in_service.iloc[changed & (values <= 0)] = False
+        chg_and_conn = changed & (values > 0)
+        tmp_in_service.iloc[chg_and_conn] = True
+        tmp_bus.iloc[chg_and_conn] = to_sub_id[chg_and_conn] + (values[chg_and_conn] - 1) * self.n_sub
+
     def apply_action(self, backendAction=None):
         """
         .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
@@ -556,9 +564,58 @@ class PandaPowerBackend(Backend):
                     self._grid.shunt["bus"][sh_bus2] = self.shunt_to_subid[sh_bus2] + self.__nb_bus_before
 
         # i made at least a real change, so i implement it in the backend
-        for id_el, new_bus in topo__:
-            id_el_backend, id_topo, type_obj = self._big_topo_to_backend[id_el]
-            self._type_to_bus_set[type_obj](new_bus, id_el_backend, id_topo)
+        if False:
+            for id_el, new_bus in topo__:
+                id_el_backend, id_topo, type_obj = self._big_topo_to_backend[id_el]
+                self._type_to_bus_set[type_obj](new_bus, id_el_backend, id_topo)
+        else:
+            loads_bus = backendAction.get_loads_bus()
+            if np.any(loads_bus.changed):
+                self._vectorized_change_bus(self._grid.load, "bus",
+                                            self.load_to_subid,
+                                            loads_bus.values,
+                                            loads_bus.changed)
+
+            gens_bus = backendAction.get_gens_bus()
+            if np.any(gens_bus.changed):
+                self._vectorized_change_bus(self._grid.gen, "bus",
+                                            self.gen_to_subid,
+                                            gens_bus.values,
+                                            gens_bus.changed)
+
+                if gens_bus.changed[self._grid.gen.shape[0] - 1] and self._iref_slack is not None:
+                    # handle pandapower slack bus
+                    gen_id = self._grid.gen.shape[0] - 1
+                    new_bus = gens_bus.values[gen_id]
+                    self._grid.ext_grid["bus"].iat[0] = self.gen_to_subid[gen_id] + (new_bus - 1) * self.n_sub
+
+            lines_or_bus = backendAction.get_lines_or_bus()
+            if np.any(lines_or_bus.changed[:self.__nb_powerline]):
+                # "from" side of powerline
+                self._vectorized_change_bus(self._grid.line, "from_bus",
+                                            self.line_or_to_subid[:self.__nb_powerline],
+                                            lines_or_bus.values[:self.__nb_powerline],
+                                            lines_or_bus.changed[:self.__nb_powerline])
+            if np.any(lines_or_bus.changed[self.__nb_powerline:]):
+                # "hv" side of trafo
+                self._vectorized_change_bus(self._grid.trafo, "hv_bus",
+                                            self.line_or_to_subid[self.__nb_powerline:],
+                                            lines_or_bus.values[self.__nb_powerline:],
+                                            lines_or_bus.changed[self.__nb_powerline:])
+
+            lines_ex_bus = backendAction.get_lines_ex_bus()
+            if np.any(lines_ex_bus.changed[:self.__nb_powerline]):
+                # "to" side of powerline
+                self._vectorized_change_bus(self._grid.line, "to_bus",
+                                            self.line_ex_to_subid[:self.__nb_powerline],
+                                            lines_ex_bus.values[:self.__nb_powerline],
+                                            lines_ex_bus.changed[:self.__nb_powerline])
+            if np.any(lines_ex_bus.changed[self.__nb_powerline:]):
+                # "lv" side of trafo
+                self._vectorized_change_bus(self._grid.trafo, "lv_bus",
+                                            self.line_ex_to_subid[self.__nb_powerline:],
+                                            lines_ex_bus.values[self.__nb_powerline:],
+                                            lines_ex_bus.changed[self.__nb_powerline:])
 
         bus_is = self._grid.bus["in_service"]
         for i, (bus1_status, bus2_status) in enumerate(active_bus):
@@ -741,6 +798,8 @@ class PandaPowerBackend(Backend):
                 return self._grid.converged
 
         except pp.powerflow.LoadflowNotConverged as exc_:
+            import pdb
+            pdb.set_trace()
             # of the powerflow has not converged, results are Nan
             self._reset_all_nan()
             return False
