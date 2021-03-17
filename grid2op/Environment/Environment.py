@@ -1077,10 +1077,10 @@ class Environment(BaseEnv):
 
         """
 
-        if re.match("^[a-zA-Z0-9]*$", add_for_train) is not None:
+        if re.match("^[a-zA-Z0-9]*$", add_for_train) is None:
             raise EnvError("The suffixes you can use for training data (add_for_train) "
                            "should match the regex \"^[a-zA-Z0-9]*$\"")
-        if re.match("^[a-zA-Z0-9]*$", add_for_val) is not None:
+        if re.match("^[a-zA-Z0-9]*$", add_for_val) is None:
             raise EnvError("The suffixes you can use for validation data (add_for_val)"
                            "should match the regex \"^[a-zA-Z0-9]*$\"")
 
