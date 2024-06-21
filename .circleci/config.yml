@@ -230,6 +230,17 @@ jobs:
                    export _GRID2OP_FORCE_TEST=1
                    cd /tmp
                    grid2op.testinstall
+            - run:
+               command: |
+                   source venv_test/bin/activate
+                   python -m pip install --upgrade "numpy>=2,<2.1" numba pandas scipy pandapower deepdiff matplotlib numexpr
+                   pip freeze
+            - run:
+                command: |
+                   source venv_test/bin/activate
+                   export _GRID2OP_FORCE_TEST=1
+                   cd /tmp
+                   grid2op.testinstall
 
     install310:
         executor: python310
