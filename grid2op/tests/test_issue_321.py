@@ -81,11 +81,13 @@ class Issue321Tester(unittest.TestCase):
         """
         seed_ = 0
         scen_nm = "2050-02-14_0"
+        from lightsim2grid import LightSimBackend
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             env = grid2op.make("l2rpn_wcci_2022_dev",
-                                    test=True,
-                                    _add_to_name=type(self).__name__)
+                               test=True,
+                            #    backend = LightSimBackend(),
+                               _add_to_name=type(self).__name__)
         param = env.parameters
         param.LIMIT_INFEASIBLE_CURTAILMENT_STORAGE_ACTION = True
         env.seed(seed_)
@@ -115,6 +117,25 @@ class Issue321Tester(unittest.TestCase):
         obs, reward, done, info = env.step(second_)
         assert not done
         obs, reward, done, info = env.step(third_)
+        bus_gen_p = {}
+        for gen_p, bus in zip(obs.gen_p, obs.gen_to_subid):
+            if bus not in bus_gen_p:
+                bus_gen_p[bus] = 0.
+            bus_gen_p[bus] += gen_p
+        bus_load_p = {}
+        for load_p, bus in zip(obs.load_p, obs.load_to_subid):
+            if bus not in bus_load_p:
+                bus_load_p[bus] = 0.
+            bus_load_p[bus] += load_p
+        
+        bus_gen_v = {}
+        for gen_v, bus in zip(obs.gen_v, obs.gen_to_subid):
+            if bus not in bus_gen_v:
+                bus_gen_v[bus] = 0.
+            bus_gen_v[bus] = gen_v
+        
+        import pdb
+        pdb.set_trace()
         assert not done
         obs, reward, done, info = env.step(all_zero)
         assert not done

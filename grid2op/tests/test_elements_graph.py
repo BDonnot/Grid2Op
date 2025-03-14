@@ -135,10 +135,28 @@ class TestElementsGraph14SandBox(unittest.TestCase):
         action = self.env.action_space({"set_bus": {"substations_id": [(sub_id, topo)]}})
         obs, reward, done, info = self.env.step(action)
         assert not done
+        assert len(info["exception"]) == 0
         with warnings.catch_warnings():
             warnings.filterwarnings("error")
             # an error in the construction of the edges
             graph = obs.get_elements_graph()
+        
+        # ## DEBUG
+        # import pickle
+        # import pandapower
+        # pp_ver = pandapower.__version__.split(".")[0]
+        # with open(f"internal_{pp_ver}_calc_volt_angle.pickle", "wb") as f:
+        #     pickle.dump([self.env.backend._grid["_ppc"]["internal"]["Sbus"],
+        #                  self.env.backend._grid["_ppc"]["internal"]["Ybus"].toarray(),
+        #                  self.env.backend._grid["_ppc"]["internal"]["V"],
+        #                  self.env.backend._grid["_ppc"]["internal"]["pv"],
+        #                  self.env.backend._grid["_ppc"]["internal"]["pq"],
+        #                  ],
+        #                 file=f)
+        # ### end DEBUG
+        # import pdb
+        # pdb.set_trace()
+        
         # correct bus are connected
         bus_ids = graph.graph["bus_nodes_id"]
         assert graph.nodes[bus_ids[sub_id]]["connected"]

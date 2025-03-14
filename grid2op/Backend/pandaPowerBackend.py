@@ -358,6 +358,18 @@ class PandaPowerBackend(Backend):
             self._grid = pp.from_json(full_path)
         self._check_for_non_modeled_elements()
 
+        # pandapower 3
+        if "tap_dependency_table" not in self._grid.trafo:
+            self._grid.trafo["tap_dependency_table"] = False
+        if "leakage_resistance_ratio_hv" not in self._grid.trafo:
+            self._grid.trafo["leakage_resistance_ratio_hv"] = 0.5
+            self._grid.trafo["tap_changer_type"] = "Ratio"
+            
+        for col_nm in ["tap_step_percent", "tap_neutral", "tap_pos"]:
+            tmp = self._grid.trafo[col_nm]
+            self._grid.trafo.loc[~np.isfinite(tmp), col_nm] = 0.
+        # end pandapower 3...
+            
         # add the slack bus that is often not modeled as a generator, but i need it for this backend to work
         bus_gen_added = None
         i_ref = None
@@ -1069,6 +1081,11 @@ class PandaPowerBackend(Backend):
                         lightsim2grid=self._lightsim2grid,
                         max_iteration=self._max_iter,
                         distributed_slack=self._dist_slack,
+                        # pandapower 3
+                        recycle=False,
+                        calculate_voltage_angles=True,
+                        voltage_depend_loads=False,
+                        trafo_model="t",
                     )
             except IndexError as exc_:
                 raise pp.powerflow.LoadflowNotConverged(f"Surprising behaviour of pandapower when a bus is not connected to "

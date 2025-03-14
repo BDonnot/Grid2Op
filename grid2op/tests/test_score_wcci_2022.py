@@ -84,7 +84,7 @@ class WCCI2022Tester(unittest.TestCase):
                                     _add_to_name=type(self).__name__)
         score_fun = L2RPNWCCI2022ScoreFun(storage_cost=storage_cost)
         score_fun.initialize(self.env)
-        th_val = storage_cost * 10. / 12.
+        th_val = storage_cost * 10. / 12.  # (10 MWh )* (storage_cost € / MW )* (1/12. step / h)
         
         obs = self._aux_reset_env()
         act = self.env.action_space({"set_storage": [(0, -5.), (1, 5.)]})
@@ -93,7 +93,7 @@ class WCCI2022Tester(unittest.TestCase):
         margin_cost =  score_fun._get_marginal_cost(self.env)
         assert margin_cost == 70.
         storage_cost = score_fun._get_storage_cost(self.env, margin_cost)
-        assert abs(storage_cost - th_val) <= 1e-5  # (10 MWh )* (storage_cost € / MW )* (1/12. step / h)
+        assert abs(storage_cost - th_val) <= 1e-5  
         gen_p = 1.0 * obs.gen_p
         
         _ = self._aux_reset_env()
@@ -101,7 +101,8 @@ class WCCI2022Tester(unittest.TestCase):
         gen_p_dn = 1.0 * obs.gen_p
         
         assert reward >= reward_dn
-        assert abs(reward - (reward_dn + storage_cost + (gen_p.sum() - gen_p_dn.sum()) * margin_cost / 12. )) <= 1e-6
+        th_r = (reward_dn + storage_cost + (gen_p.sum() - gen_p_dn.sum()) * margin_cost / 12. )
+        assert abs(reward - th_r) <= 1e-6, f"{reward} vs {th_r}"
         
     def test_score_helper(self):
         """basic tests for ScoreL2RPN2022 class"""        
@@ -165,7 +166,7 @@ class TestL2RPNWCCI2022ScoreFun(unittest.TestCase):
         self.pt_ref = obs.gen_cost_per_MW[obs.gen_p > 0].max()
         
         # test that the score, in this case, is the losses
-        assert np.abs(self.score_ref - self.losses_ref * self.pt_ref / 12.) <= 1e-4
+        assert np.abs(self.score_ref - self.losses_ref * self.pt_ref / 12.) <= 1e-4, f"{self.losses_ref * self.pt_ref / 12.} vs {self.score_ref}"
              
         return super().setUp()
     
