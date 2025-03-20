@@ -29,6 +29,9 @@ from grid2op.Backend.backend import Backend
 
 MIN_LS_VERSION_VM_PU = version.parse("0.6.0")
 PP_CREATE_BUS_BUG = version.parse("3.0.0")
+PP_TRAFO_BUG_MIN = version.parse("3.0.0")
+PP_TRAFO_BUG_MAX = version.parse("4.0.0")
+CURRENT_PP_VERSION = version.parse(version_medata("pandapower"))
 
 
 try:
@@ -368,6 +371,10 @@ class PandaPowerBackend(Backend):
         for col_nm in ["tap_step_percent", "tap_neutral", "tap_pos"]:
             tmp = self._grid.trafo[col_nm]
             self._grid.trafo.loc[~np.isfinite(tmp), col_nm] = 0.
+            
+        if PP_TRAFO_BUG_MIN <= CURRENT_PP_VERSION < PP_TRAFO_BUG_MAX:
+            # pass
+            self._grid.trafo.loc[self._grid.trafo["i0_percent"] < 0, "i0_percent"] *= -1
         # end pandapower 3...
             
         # add the slack bus that is often not modeled as a generator, but i need it for this backend to work
@@ -551,12 +558,11 @@ class PandaPowerBackend(Backend):
         # "hack" to handle topological changes, for now only 2 buses per substation
         add_topo = copy.deepcopy(self._grid.bus)
         # TODO n_busbar: what if non contiguous indexing ???
-        pp_vers = version.parse(version_medata("pandapower"))
         for _ in range(self.n_busbar_per_sub - 1):   # self.n_busbar_per_sub and not type(self) here otherwise it erases can_handle_more_than_2_busbar / cannot_handle_more_than_2_busbar
             add_topo.index += add_topo.shape[0]
             add_topo["in_service"] = False
             for ind, el in add_topo.iterrows():
-                if pp_vers < PP_CREATE_BUS_BUG:
+                if CURRENT_PP_VERSION < PP_CREATE_BUS_BUG:
                     pp.create_bus(self._grid, index=ind, **el)
                 else:
                     tmp = dict(**el)
