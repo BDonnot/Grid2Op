@@ -44,6 +44,7 @@ __all__ = [
     "SimulateError",
     "SimulateUsedTooMuchThisStep",
     "SimulateUsedTooMuchThisEpisode",
+    "EnvDependantAttributeCalledTooLate",
     "ChronicsError",
     "ChronicsNotFoundError",
     "InsufficientData",
@@ -124,7 +125,8 @@ from grid2op.Exceptions.observationExceptions import (BaseObservationError,
                                                       NoForecastAvailable,
                                                       SimulateError,
                                                       SimulateUsedTooMuchThisStep,
-                                                      SimulateUsedTooMuchThisEpisode)
+                                                      SimulateUsedTooMuchThisEpisode,
+                                                      EnvDependantAttributeCalledTooLate)
 
 from grid2op.Exceptions.chronicsExceptions import (ChronicsError,
                                                    ChronicsNotFoundError,

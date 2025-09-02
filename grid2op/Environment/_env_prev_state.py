@@ -40,17 +40,19 @@ class _EnvPreviousState(object):
             self._grid_obj_cls : CLS_AS_DICT_TYPING = grid_obj_cls
         self._n_storage = len(self._grid_obj_cls["name_storage"])  # to avoid typing that over and over again
         
-        self._load_p : np.ndarray = 1. * init_load_p
-        self._load_q : np.ndarray = 1. * init_load_q
-        self._gen_p : np.ndarray = 1. * init_gen_p
-        self._gen_v : np.ndarray = 1. * init_gen_v
-        self._storage_p : np.ndarray = 1. * init_storage_p
-        self._topo_vect : np.ndarray = 1 * init_topo_vect
-        self._shunt_p : np.ndarray = 1. * init_shunt_p
-        self._shunt_q : np.ndarray = 1. * init_shunt_q
-        self._shunt_bus : np.ndarray = 1. * init_shunt_bus
+        self._load_p : np.ndarray = init_load_p.copy()
+        self._load_q : np.ndarray = init_load_q.copy()
+        self._gen_p : np.ndarray = init_gen_p.copy()
+        self._gen_v : np.ndarray = init_gen_v.copy()
+        self._storage_p : np.ndarray = init_storage_p.copy()
+        self._topo_vect : np.ndarray = init_topo_vect.copy()
+        self._shunt_p : np.ndarray = init_shunt_p.copy()
+        self._shunt_q : np.ndarray = init_shunt_q.copy()
+        self._shunt_bus : np.ndarray = init_shunt_bus.copy()
+        
+        # TODO detailed topo: is this necessary ? It will always be one...
         if "detailed_topo_desc" in self._grid_obj_cls and self._grid_obj_cls["detailed_topo_desc"] is not None:
-            self._switch_state = 1 * init_switch_state
+            self._switch_state = init_switch_state.copy()
         else:
             self._switch_state = None
             
@@ -93,7 +95,7 @@ class _EnvPreviousState(object):
                          gen_p,
                          self._gen_v,
                          gen_v)
-        self._topo_vect[topo_vect > 0] = 1 * topo_vect[topo_vect > 0]
+        self._topo_vect[topo_vect > 0] = topo_vect[topo_vect > 0]
         
         # update storage units
         if self._n_storage > 0:
@@ -108,7 +110,7 @@ class _EnvPreviousState(object):
                              shunt_p,
                              self._shunt_q,
                              shunt_q)
-            self._shunt_bus[shunt_bus > 0] = 1 * shunt_bus[shunt_bus > 0]
+            self._shunt_bus[shunt_bus > 0] = shunt_bus[shunt_bus > 0]
             
         if switches is not None:
             if self._switch_state is None:
@@ -161,10 +163,10 @@ class _EnvPreviousState(object):
                         "_shunt_p",
                         "_shunt_q",
                         "_shunt_bus"]:
-            tmp = getattr(self, attr_nm)
+            tmp : np.ndarray = getattr(self, attr_nm)
             if tmp.size > 1:
                 # works only for array of size 2 or more
-                tmp[:] = copy.deepcopy(getattr(other, attr_nm))
+                tmp[:] = getattr(other, attr_nm)
             else:
                 setattr(self, attr_nm, getattr(other, attr_nm))
         # if detailed topo

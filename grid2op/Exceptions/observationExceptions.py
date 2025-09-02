@@ -67,3 +67,27 @@ class SimulateUsedTooMuchThisEpisode(SimulateUsedTooMuch):
     """
 
     pass
+
+class EnvDependantAttributeCalledTooLate(BaseObservationError):
+    """This error tells you that you called a observation attribute
+    that depends on the env state (*eg* gen_uptime) but that the
+    env state has moved between (env.reset or env.step has been called)
+    the time the observation has been created and the time this attribute 
+    has been called.
+    
+    This can happen in this case:
+    
+    .. code-block:: python
+    
+        import grid2op
+        env_name = "l2rpn_case14_sandbox"
+
+        env = grid2op.make(env_name)
+
+        init_obs = env.reset()
+        next_obs, *_ = env.step(env.action_space())
+        next_obs.gen_uptime  # perfectly fine
+        init_obs.gen_uptime
+
+    """
+    pass

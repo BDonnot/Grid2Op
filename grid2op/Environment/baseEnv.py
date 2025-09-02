@@ -700,6 +700,15 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         # 1.12.1
         self._needs_active_bus = False
         
+        # 1.12.2
+        self._chron_id = None
+        self._timestamp_step = 0.
+        self._timestamp_reset = 0.
+        self._timestamp_copy = 0.
+        self._nb_step_global_for_hashlike = 0
+        self._nb_reset_global_for_hashlike = 0
+        self._nb_copy_global_for_hashlike = 0
+        
     @property
     def highres_sim_counter(self) -> int:
         return self._highres_sim_counter
@@ -720,6 +729,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             # for earlier backend it is not possible to check this so I ignore it.
             
         RandomObject._custom_deepcopy_for_copy(self, new_obj)
+        
         new_obj.name = self.name
         if dict_ is None:
             dict_ = {}
@@ -1029,6 +1039,35 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         
         new_obj._called_from_reset = self._called_from_reset
         new_obj._needs_active_bus = self._needs_active_bus
+        
+        # 1.12.2
+        new_obj._chron_id = self._chron_id
+        new_obj._timestamp_step = 0.
+        new_obj._timestamp_reset = 0.
+        new_obj._nb_step_global_for_hashlike = 0
+        new_obj._nb_reset_global_for_hashlike = 0
+        new_obj._timestamp_copy = time.perf_counter()
+        new_obj._nb_copy_global_for_hashlike = self._nb_copy_global_for_hashlike + 1
+    
+    def get_kind_of_unique_hash(self) -> int:
+        """
+        Internal
+
+        .. warning:: 
+            /!\\\\ Do not use it outside of obs._update_access_env_dict method /!\\\\
+                
+        """
+        return hash(
+            (id(self),
+             self.nb_time_step, 
+             self._chron_id,
+             self._timestamp_step,
+             self._timestamp_reset,
+             self._timestamp_copy,
+             self._nb_step_global_for_hashlike,
+             self._nb_reset_global_for_hashlike,
+             self._nb_copy_global_for_hashlike
+        ))
         
     def get_path_env(self):
         """
@@ -1591,7 +1630,9 @@ class BaseEnv(GridObjects, RandomObject, ABC):
                                    f"`options` using the key `{el}` which is invalid. "
                                    f"Only keys in {sorted(list(type(self).KEYS_RESET_OPTIONS))} "
                                    f"can be used.")
-                    
+        self._nb_reset_global_for_hashlike += 1
+        self._timestamp_reset = time.perf_counter()
+        
         self.__is_init = True
         self._called_from_reset = True
         # current = None is an indicator that this is the first step of the environment
@@ -1624,6 +1665,13 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         elif self.seed_used is not None and not self._has_just_been_seeded:
             # seeds (so that next episode does not depend on what happened in previous episode)
             self.seed(None, _seed_me=False)
+        
+        
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            self._chron_id = self.chronics_handler.get_id()
+        if self._chron_id == "":
+            self._chron_id = None
             
         self._reset_storage()
         self._reset_curtailment()
@@ -2710,6 +2758,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             self._last_obs = self._observation_space(
                 env=self, _update_state=_update_state
             )
+    
         if _do_copy:
             return copy.deepcopy(self._last_obs)
         else:
@@ -3631,6 +3680,9 @@ class BaseEnv(GridObjects, RandomObject, ABC):
                 "Impossible to make a step with a non initialized backend. Have you called "
                 '"env.reset()" after the last game over ?'
             )
+        self._nb_step_global_for_hashlike += 1
+        self._timestamp_step = time.perf_counter()
+        
         # I did something after calling "env.seed()" which is
         # somehow "env.step()" or "env.reset()"
         self._has_just_been_seeded =  False  
@@ -3840,11 +3892,6 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         self._time_step += end_step - beg_step
         if conv_ is not None:
             except_.append(conv_)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore")
-            chron_id = self.chronics_handler.get_id()
-        if chron_id == "":
-            chron_id = None
         self.infos = {
             "disc_lines": self._disc_lines,
             "is_illegal": is_illegal,
@@ -3857,7 +3904,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             "opponent_attack_sub": subs_attacked,
             "opponent_attack_duration": attack_duration,
             "exception": except_,
-            "time_series_id": chron_id
+            "time_series_id": self._chron_id
         }
 
         if self.backend.detailed_infos_for_cascading_failures:

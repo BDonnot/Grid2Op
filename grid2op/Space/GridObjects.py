@@ -17,7 +17,6 @@ complex :class:`grid2op.Action.Action` or :class:`grid2op.Observation.Observaion
 to manipulate.
 
 """
-from re import S
 import warnings
 import copy
 import os

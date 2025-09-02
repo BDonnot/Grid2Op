@@ -8,9 +8,9 @@
 
 import copy
 import os
-
+from typing import TYPE_CHECKING
 import numpy as np
-from grid2op.Exceptions.envExceptions import EnvError
+from grid2op.Exceptions import (EnvError,)
 
 from grid2op.Observation.serializableObservationSpace import (
     SerializableObservationSpace,
@@ -19,6 +19,11 @@ from grid2op.Reward import RewardHelper
 from grid2op.Observation.completeObservation import CompleteObservation
 from grid2op.dtypes import dt_int
 
+
+if TYPE_CHECKING:
+    from grid2op.Environment import Environment
+    
+    
 class ObservationSpace(SerializableObservationSpace):
     """
     Helper that provides useful functions to manipulate :class:`BaseObservation`.
@@ -134,7 +139,7 @@ class ObservationSpace(SerializableObservationSpace):
         self._observation_bk_class = observation_bk_class
         self._observation_bk_kwargs = observation_bk_kwargs
     
-    def set_real_env_kwargs(self, env):
+    def set_real_env_kwargs(self, env: "Environment"):
         if not self.with_forecast:
             return 
         # I don't need the backend nor the chronics_handler
@@ -417,7 +422,7 @@ class ObservationSpace(SerializableObservationSpace):
         if self.with_forecast:
             self.obs_env.update_grid(env)
             obs_env_obs = self.obs_env if self.obs_env.is_valid() else None
-        
+    
         res = self.observationClass(
             obs_env=obs_env_obs,
             action_helper=self.action_helper_env,

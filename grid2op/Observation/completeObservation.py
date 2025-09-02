@@ -226,6 +226,7 @@ class CompleteObservation(BaseObservation):
                  action_helper=None,
                  random_prng=None,
                  kwargs_env=None,
+                 access_env_dict=None,
                  **kwargs):
 
         BaseObservation.__init__(
@@ -234,6 +235,7 @@ class CompleteObservation(BaseObservation):
             action_helper=action_helper,
             random_prng=random_prng,
             kwargs_env=kwargs_env,
+            access_env_dict=access_env_dict,
             **kwargs
         )
         self._dictionnarized = None
@@ -243,3 +245,4 @@ class CompleteObservation(BaseObservation):
         self._reset_matrices()
         self.reset()
         self._update_obs_complete(env, with_forecast=with_forecast)
+        self._update_access_env_dict(env)

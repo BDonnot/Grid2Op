@@ -66,6 +66,7 @@ class NoisyObservation(BaseObservation):
         action_helper=None,
         random_prng=None,
         kwargs_env=None,
+        access_env_dict=None,
         sigma_load_p=0.01,  # multiplicative (log normal)
         sigma_load_q=0.01,  # multiplicative (log normal)
         sigma_gen_p=0.01,  # multiplicative (log normal)
@@ -82,6 +83,7 @@ class NoisyObservation(BaseObservation):
             action_helper=action_helper,
             random_prng=random_prng,
             kwargs_env=kwargs_env,
+            access_env_dict=access_env_dict,
             sigma_load_p=sigma_load_p,
             sigma_load_q=sigma_load_q,
             sigma_gen_p=sigma_gen_p,
@@ -109,6 +111,9 @@ class NoisyObservation(BaseObservation):
 
         # update as if the data were complete
         self._update_obs_complete(env, with_forecast=with_forecast)
+        
+        # update "lazy" attributes
+        self._update_access_env_dict(env)
 
         # multiplicative noise
         mult_load_p = self.random_prng.lognormal(

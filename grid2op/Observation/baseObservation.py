@@ -15,7 +15,7 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from packaging import version
 
-from typing import Dict, Union, Tuple, List, Optional, Literal
+from typing import Any, Callable, Dict, Union, Tuple, List, Optional, Literal
 try:
     from typing import Self
 except ImportError:
@@ -31,6 +31,7 @@ from grid2op.Exceptions import (
     Grid2OpException,
     NoForecastAvailable,
     BaseObservationError,
+    EnvDependantAttributeCalledTooLate,
 )
 from grid2op.Space import GridObjects, ElTypeInfo
 
@@ -598,6 +599,9 @@ class BaseObservation(GridObjects):
         "year",
         "delta_time",
         "_is_done",
+        "_private_gen_uptime",
+        "_private_gen_downtime",
+        
     ]
     
     #: .. versionadded: 1.12.0
@@ -679,6 +683,7 @@ class BaseObservation(GridObjects):
                  action_helper=None,
                  random_prng=None,
                  kwargs_env=None,
+                 access_env_dict=None,
                  **kwargs):
         GridObjects.__init__(self)
         self._is_done = True
@@ -694,7 +699,10 @@ class BaseObservation(GridObjects):
         from grid2op.Environment._obsEnv import _ObsEnv
         self._obs_env : _ObsEnv = obs_env
         self._ptr_kwargs_env : Dict = kwargs_env
-
+        self.__access_env_dict : Optional[
+            Dict[Literal["access_env_fun", "access_bk_act_fun", "access_bk_fun"],
+                 Callable[[str], Any]]] = access_env_dict
+        
         # calendar data
         self.year = dt_int(1970)
         self.month = dt_int(1)
@@ -819,6 +827,38 @@ class BaseObservation(GridObjects):
         # 1.11.0 previous connected
         self._prev_conn = None
         
+        # 1.12.2
+        self._private_gen_uptime = None
+        self._private_gen_downtime = None
+        self._private_switches_state = None
+    
+    @property
+    def gen_uptime_lazy(self) -> np.ndarray[dt_int]:
+        if self.__access_env_dict is None:
+            raise BaseObservationError("No dict to access env property needed for obs.gen_uptime_lazy")
+        if self._private_gen_uptime is None:
+            self._private_gen_uptime : np.ndarray = self.__access_env_dict["access_env_fun"]("_gen_uptime").copy()
+            self._private_gen_uptime.flags.writeable = False
+        return self._private_gen_uptime
+    
+    @property
+    def gen_downtime_lazy(self) -> np.ndarray[dt_int]:
+        if self.__access_env_dict is None:
+            raise BaseObservationError("No dict to access env property needed for obs.gen_downtime_lazy")
+        if self._private_gen_downtime is None:
+            self._private_gen_downtime : np.ndarray  = self.__access_env_dict["access_env_fun"]("_gen_downtime").copy()
+            self._private_gen_downtime.flags.writeable = False
+        return self._private_gen_downtime
+    
+    @property
+    def switches_state_lazy(self) -> np.ndarray[bool]:
+        if self.__access_env_dict is None:
+            raise BaseObservationError("No dict to access env property needed for obs.switches_state_lazy")
+        if self._private_switches_state is None:
+            self._private_switches_state : np.ndarray  = self.__access_env_dict["access_bk_act_fun"]("current_switch").copy()
+            self._private_switches_state.flags.writeable = False
+        return self._private_switches_state
+            
     def _aux_copy(self, other : Self) -> None:
         cls = type(self)
         for attr_nm in cls.attr_simple_cpy:
@@ -865,7 +905,10 @@ class BaseObservation(GridObjects):
     def __copy__(self) -> Self:
         res = type(self)(obs_env=self._obs_env,
                          action_helper=self.action_helper,
-                         kwargs_env=self._ptr_kwargs_env)
+                         kwargs_env=self._ptr_kwargs_env,
+                         access_env_dict=self.__access_env_dict,
+                         **self.__kwargs,
+                         )
 
         # copy regular attributes
         self._aux_copy(other=res)
@@ -880,13 +923,13 @@ class BaseObservation(GridObjects):
         res._forecasted_grid_act = copy.copy(self._forecasted_grid_act)
         res._forecasted_inj = copy.copy(self._forecasted_inj)
         res._env_internal_params  = copy.copy(self._env_internal_params )
-
         return res
 
     def __deepcopy__(self, memodict={}) -> Self:
         res = type(self)(obs_env=self._obs_env,
                          action_helper=self.action_helper,
                          kwargs_env=self._ptr_kwargs_env,
+                         access_env_dict=self.__access_env_dict,
                          **self.__kwargs)
 
         # copy the kwargs (reference)
@@ -1888,6 +1931,41 @@ class BaseObservation(GridObjects):
                     res.append(attr_nm)
         return diff_, res
 
+    def _update_access_env_dict(self, env: "grid2op.Environment.Environment"):
+        ref_env_hash = 1 * env.get_kind_of_unique_hash()
+        
+        def access_env_fun(str_):
+            if env.get_kind_of_unique_hash() != ref_env_hash:
+                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                         "set before calling env.step() "
+                                                         "or env.reset().")
+            if str_ == "backend":
+                raise RuntimeError("Impossible to access the backend with this function.")
+            if str_ == 'chronics_handler':
+                raise RuntimeError("Impossible to access the chronics_handler with this function.")
+            if str_ == '_backend_action':    
+                raise RuntimeError("Impossible to access the _backend_action with this function.")
+                
+            return getattr(env, str_)
+        
+        def access_bk_act_fun(str_):
+            if env.get_kind_of_unique_hash() != ref_env_hash:
+                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                         "set before calling env.step() "
+                                                         "or env.reset().")
+            return getattr(env._backend_action, str_)
+        
+        def access_bk_fun(str_):
+            if env.get_kind_of_unique_hash() != ref_env_hash:
+                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                         "set before calling env.step() "
+                                                         "or env.reset().")
+            return getattr(env.backend, str_)
+        
+        self.__access_env_dict = {"access_env_fun": access_env_fun,
+                                  "access_bk_act_fun": access_bk_act_fun,
+                                  "access_bk_fun": access_bk_fun}
+        
     @abstractmethod
     def update(self, env: "grid2op.Environment.Environment", with_forecast: bool=True) -> None:
         """
@@ -3698,22 +3776,27 @@ class BaseObservation(GridObjects):
         _ptr_kwargs_env = self._ptr_kwargs_env
         self._ptr_kwargs_env = None
         
+        _access_env_dict = self.__access_env_dict
+        self.__access_env_dict = None
         res = copy.deepcopy(self)
 
         self._obs_env = obs_env
         self.action_helper = action_helper
         self._ptr_kwargs_env = _ptr_kwargs_env
+        self.__access_env_dict = _access_env_dict
         if env is None:
             # this will make a copy but the observation will still
             # be "bound" to the original env
             res._obs_env = obs_env
             res.action_helper = action_helper
             res._ptr_kwargs_env = _ptr_kwargs_env
+            res.__access_env_dict = _access_env_dict
         else:
             # the action will be "bound" to the new environment
             res._obs_env = env._observation_space.obs_env
             res.action_helper = env._observation_space.action_helper_env
             res._ptr_kwargs_env = env._observation_space._real_env_kwargs
+            res.__access_env_dict = None
         return res
 
     @property
