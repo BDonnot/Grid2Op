@@ -7,14 +7,13 @@
 # This file is part of Grid2Op, Grid2Op a testbed platform to model sequential decision making in power systems.
 
 import gc
-import sys
 import warnings
 import unittest
 
 # see https://code.activestate.com/recipes/577504/
-from sys import getsizeof, stderr
-from itertools import chain
-from collections import deque
+# from sys import getsizeof, stderr
+# from itertools import chain
+# from collections import deque
 
 import grid2op
 from grid2op.Exceptions import EnvError
@@ -188,7 +187,6 @@ class TestDanglingRef(unittest.TestCase):
         env.close()
         del env
         gc.collect()
-
         nb_env_after_close = (
             len(
                 [

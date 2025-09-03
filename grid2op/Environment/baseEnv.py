@@ -4112,6 +4112,10 @@ class BaseEnv(GridObjects, RandomObject, ABC):
                 reward.close()
             self.other_rewards = None
             
+        if hasattr(self, "current_obs") and self.current_obs is not None:
+            self.current_obs.detach_env()
+            self.current_obs = None
+            
         self.backend : Backend = None
         self.__is_init = False
         self.__closed = True
@@ -4225,6 +4229,13 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             "_is_alert_used_in_reward",
             "_kwargs_attention_budget",
             "_limited_before",
+            "_chron_id",
+            "_timestamp_step",
+            "_timestamp_reset",
+            "_timestamp_copy",
+            "_nb_step_global_for_hashlike",
+            "_nb_reset_global_for_hashlike",
+            "_nb_copy_global_for_hashlike",
         ]:
             if hasattr(self, attr_nm):
                 delattr(self, attr_nm)

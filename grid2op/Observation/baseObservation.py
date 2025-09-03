@@ -14,7 +14,7 @@ from abc import abstractmethod
 import numpy as np
 from scipy.sparse import csr_matrix
 from packaging import version
-
+from functools import partial
 from typing import Any, Callable, Dict, Union, Tuple, List, Optional, Literal
 try:
     from typing import Self
@@ -833,7 +833,7 @@ class BaseObservation(GridObjects):
         self._private_switches_state = None
     
     @property
-    def gen_uptime_lazy(self) -> np.ndarray[dt_int]:
+    def gen_uptime_lazy(self) -> "np.ndarray[dt_int]":
         if self.__access_env_dict is None:
             raise BaseObservationError("No dict to access env property needed for obs.gen_uptime_lazy")
         if self._private_gen_uptime is None:
@@ -842,7 +842,7 @@ class BaseObservation(GridObjects):
         return self._private_gen_uptime
     
     @property
-    def gen_downtime_lazy(self) -> np.ndarray[dt_int]:
+    def gen_downtime_lazy(self) -> "np.ndarray[dt_int]":
         if self.__access_env_dict is None:
             raise BaseObservationError("No dict to access env property needed for obs.gen_downtime_lazy")
         if self._private_gen_downtime is None:
@@ -851,7 +851,7 @@ class BaseObservation(GridObjects):
         return self._private_gen_downtime
     
     @property
-    def switches_state_lazy(self) -> np.ndarray[bool]:
+    def switches_state_lazy(self) -> "np.ndarray[bool]":
         if self.__access_env_dict is None:
             raise BaseObservationError("No dict to access env property needed for obs.switches_state_lazy")
         if self._private_switches_state is None:
@@ -1930,42 +1930,54 @@ class BaseObservation(GridObjects):
                 if (array_.shape[0] > 0) and np.max(np.abs(array_)):
                     res.append(attr_nm)
         return diff_, res
+        
+    def _aux_access_env_fun(self, str_: str, env: "grid2op.Environment.Environment", ref_env_hash: int):
+        if env.get_kind_of_unique_hash() != ref_env_hash:
+            raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                        "set before calling env.step() "
+                                                        "or env.reset().")
+        if str_ == "backend":
+            raise RuntimeError("Impossible to access the backend with this function.")
+        if str_ == 'chronics_handler':
+            raise RuntimeError("Impossible to access the chronics_handler with this function.")
+        if str_ == '_backend_action':    
+            raise RuntimeError("Impossible to access the _backend_action with this function.")
+        return getattr(env, str_)
+    
+    def _aux_access_bk_act_fun(self, str_: str, env: "grid2op.Environment.Environment", ref_env_hash: int):
+        if env.get_kind_of_unique_hash() != ref_env_hash:
+            raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                        "set before calling env.step() "
+                                                        "or env.reset().")
+        return getattr(env._backend_action, str_)
+    
+    def _aux_access_bk_fun(self, str_: str, env: "grid2op.Environment.Environment", ref_env_hash: int):
+        if env.get_kind_of_unique_hash() != ref_env_hash:
+            raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
+                                                        "set before calling env.step() "
+                                                        "or env.reset().")
+        return getattr(env.backend, str_)
 
     def _update_access_env_dict(self, env: "grid2op.Environment.Environment"):
         ref_env_hash = 1 * env.get_kind_of_unique_hash()
+        self.__access_env_dict = {"access_env_fun": partial(self._aux_access_env_fun, env=env, ref_env_hash=ref_env_hash),
+                                  "access_bk_act_fun": partial(self._aux_access_bk_act_fun, env=env, ref_env_hash=ref_env_hash),
+                                  "access_bk_fun": partial(self._aux_access_bk_fun, env=env, ref_env_hash=ref_env_hash)}
+    
+    def detach_env(self):
+        """
+        INTERNAL
+
+        .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
+            
+            This is called by the environment to remove any reference to it.
         
-        def access_env_fun(str_):
-            if env.get_kind_of_unique_hash() != ref_env_hash:
-                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
-                                                         "set before calling env.step() "
-                                                         "or env.reset().")
-            if str_ == "backend":
-                raise RuntimeError("Impossible to access the backend with this function.")
-            if str_ == 'chronics_handler':
-                raise RuntimeError("Impossible to access the chronics_handler with this function.")
-            if str_ == '_backend_action':    
-                raise RuntimeError("Impossible to access the _backend_action with this function.")
-                
-            return getattr(env, str_)
-        
-        def access_bk_act_fun(str_):
-            if env.get_kind_of_unique_hash() != ref_env_hash:
-                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
-                                                         "set before calling env.step() "
-                                                         "or env.reset().")
-            return getattr(env._backend_action, str_)
-        
-        def access_bk_fun(str_):
-            if env.get_kind_of_unique_hash() != ref_env_hash:
-                raise EnvDependantAttributeCalledTooLate(f"The 'synch' {str_} attribute should have been "
-                                                         "set before calling env.step() "
-                                                         "or env.reset().")
-            return getattr(env.backend, str_)
-        
-        self.__access_env_dict = {"access_env_fun": access_env_fun,
-                                  "access_bk_act_fun": access_bk_act_fun,
-                                  "access_bk_fun": access_bk_fun}
-        
+        """
+        if self.__access_env_dict is not None:
+            self.__access_env_dict = None
+        if self._ptr_kwargs_env is not None:
+            self._ptr_kwargs_env = None
+            
     @abstractmethod
     def update(self, env: "grid2op.Environment.Environment", with_forecast: bool=True) -> None:
         """

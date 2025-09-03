@@ -8,9 +8,10 @@
 
 import warnings
 import unittest
+import numpy as np
+
 
 import grid2op
-from grid2op.tests.helper_path_test import *
 from grid2op.Observation import CompleteObservation
 
 
@@ -19,9 +20,11 @@ class Issue235TesterObs(CompleteObservation):
                  obs_env=None,
                  action_helper=None,
                  random_prng=None,
-                 kwargs_env=None):
+                 kwargs_env=None,
+                 access_env_dict=None):
         CompleteObservation.__init__(
-            self, obs_env, action_helper, random_prng=random_prng, kwargs_env=kwargs_env
+            self, obs_env, action_helper, random_prng=random_prng, kwargs_env=kwargs_env,
+            access_env_dict=access_env_dict
         )
         self._is_updated = False
 

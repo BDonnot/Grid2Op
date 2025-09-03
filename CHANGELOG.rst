@@ -102,6 +102,11 @@ Native multi agents support:
 
 [1.13.0] - DETAILED TOPO
 ---------------------------
+- [BREAKING] added a key-word argument `access_env_dict` to all
+  "observation" classes. This should be added if you override the 
+  "BaseObservation" class for a custom class (*eg* you should add 
+  `access_env_dict=None` in the `__init__` and then pass 
+  `access_env_dict=access_env_dict` to the call to `super().__init__`) 
 - [FIXED] some issues with gym classes
 - [IMPROVED] the serialization of class definition 
   when using "automatic_classes" or "experimental_read_from_local_dir"

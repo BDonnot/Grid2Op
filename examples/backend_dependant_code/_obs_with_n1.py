@@ -64,6 +64,7 @@ class ObsWithN1(CompleteObservation):
                  action_helper=None,
                  random_prng=None,
                  kwargs_env=None,
+                 access_env_dict=None,
                  n1_li=None,
                  reduce_n1: Literal["max", "count", "sum"]="max",
                  compute_algo: Literal["ac", "dc"]="ac"):
@@ -71,6 +72,7 @@ class ObsWithN1(CompleteObservation):
                          action_helper,
                          random_prng,
                          kwargs_env,
+                         access_env_dict=access_env_dict,
                          n1_li=n1_li,
                          reduce_n1=reduce_n1,
                          compute_algo=compute_algo)
