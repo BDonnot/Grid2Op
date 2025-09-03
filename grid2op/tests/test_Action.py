@@ -9,6 +9,7 @@
 import copy
 import json
 import re
+from typing import Type
 import warnings
 import unittest
 import numpy as np
@@ -21,7 +22,7 @@ from grid2op.dtypes import dt_int, dt_float, dt_bool
 from grid2op.Exceptions import *
 from grid2op.Action import *
 from grid2op.Rules import RulesChecker, DefaultRules
-from grid2op.Space import GridObjects
+from grid2op.Space import GridObjects, DetailedTopoDescription
 from grid2op.Space.space_utils import save_to_dict
 
 # TODO check that if i set the element of a powerline to -1, then it's working as intended (disconnect both ends)
@@ -30,6 +31,8 @@ from grid2op.Space.space_utils import save_to_dict
 def _get_action_grid_class():
     GridObjects._clear_class_attribute()
     GridObjects.env_name = "test_action_env"
+    GridObjects.n_busbar_per_sub = 2
+    GridObjects.dim_topo = 5 + 11 + 2 * 20 + 2
     GridObjects.n_busbar_per_sub = 2
     GridObjects.detachment_is_allowed = False
     GridObjects.n_gen = 5
@@ -104,7 +107,21 @@ def _get_action_grid_class():
     )
     GridObjects.glop_version = grid2op.__version__
     GridObjects._PATH_GRID_CLASSES = None
-
+    
+    GridObjects.shunts_data_available = False
+    GridObjects.n_shunt = 0
+    GridObjects.shunt_to_subid = np.array([])
+    GridObjects.name_shunt = np.array([])
+    
+    tmp = GridObjects()
+    GridObjects.detailed_topo_desc = DetailedTopoDescription.from_ieee_grid(tmp)
+    
+    my_cls = GridObjects.init_grid(GridObjects, force=True) 
+    
+    dtd_dict = {}
+    GridObjects.detailed_topo_desc.save_to_dict(dtd_dict)
+    GridObjects._clear_class_attribute()   
+    
     json_ = {
         "glop_version": grid2op.__version__,
         "n_busbar_per_sub": "2",
@@ -337,11 +354,9 @@ def _get_action_grid_class():
         "alertable_line_names": [],
         "alertable_line_ids": [],
         "_PATH_GRID_CLASSES": None,
-        "assistant_warning_type": None
+        "assistant_warning_type": None,
+        "detailed_topo_desc": dtd_dict,
     }
-    GridObjects.shunts_data_available = False
-    my_cls = GridObjects.init_grid(GridObjects, force=True)
-    GridObjects._clear_class_attribute()
     return my_cls, json_
 
 
@@ -852,6 +867,8 @@ class TestActionBase(ABC):
             "\n\t \t - Assign bus 1 to line (origin) id 19 [on substation 12]"
             "\n\t \t - Assign bus 2 to load id 9 [on substation 12]"
             "\n\t \t - Assign bus 2 to line (extremity) id 12 [on substation 12]"
+            "\n\t - Not force any switches state"
+            "\n\t - Not change any switches state"
         )
         assert res == act_str
 
@@ -864,19 +881,23 @@ class TestActionBase(ABC):
         id_1 = 1
         id_2 = 12
 
-        action = self.helper_action(
+        action : BaseAction = self.helper_action(
             {
                 "change_bus": {"substations_id": [(id_1, arr1)]},
                 "set_bus": {"substations_id": [(id_2, arr2)]},
             }
         )
-        act_cls = type(action)
+        act_cls : Type[BaseAction] = type(action)
         
         act_serialized = action.to_vect()
         th_res = np.zeros(self.size_act)
+        n_switch = act_cls.detailed_topo_desc.switches.shape[0]
+        total_size = act_serialized.size
+        # total_size = 616
+        # assert act_serialized.size == total_size, f"{act_serialized.size} vs {total_size}"
         if "curtail" in act_cls.authorized_keys:
             # for curtailment, at the end, and by default its -1
-            th_res[-action.n_gen :] = -1
+            th_res[total_size - 2*n_switch-action.n_gen :total_size - 2*n_switch] = -1
         # set to nan the first elements
         # corresponding to prod_p, prod_v, load_p and load_q
         if "injection" in act_cls.authorized_keys:
@@ -1717,6 +1738,16 @@ class TestIADD:
             # i dont test the line reconnection...
             dict_act["change_bus"] = np.random.choice(
                 [True, False], helper_action.dim_topo
+            ).astype(dt_bool)
+            
+        if "_set_switch_status" in template_act.attr_list_set:
+            dict_act["set_switch"] = np.random.choice(
+                [1, -1], helper_action.detailed_topo_desc.switches.shape[0]
+            ).astype(dt_int)
+            
+        if "_change_switch_status" in template_act.attr_list_set:
+            dict_act["change_switch"] = np.random.choice(
+                [True, False], helper_action.detailed_topo_desc.switches.shape[0]
             ).astype(dt_bool)
         return helper_action(dict_act)
 

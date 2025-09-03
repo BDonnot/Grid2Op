@@ -15,7 +15,7 @@ from grid2op.dtypes import dt_int
 from grid2op.Exceptions import *
 from grid2op.Action import BaseAction, ActionSpace, PlayableAction, BaseAction
 from grid2op.Rules import RulesChecker
-from grid2op.Space import GridObjects
+from grid2op.Space import GridObjects, DetailedTopoDescription
 import json
 import tempfile
 
@@ -25,6 +25,8 @@ import pdb
 
 def _get_action_grid_class():
     GridObjects._clear_class_attribute()
+    GridObjects.n_busbar_per_sub = 2
+    GridObjects.dim_topo = 5 + 11 + 2 * 20 + 2
     GridObjects.env_name = "test_action_serial_dict"
     GridObjects.n_gen = 5
     GridObjects.name_gen = np.array(["gen_{}".format(i) for i in range(5)])
@@ -108,6 +110,10 @@ def _get_action_grid_class():
     GridObjects.alarms_area_names = ["all"]
     GridObjects.alarms_lines_area = {el: ["all"] for el in GridObjects.name_line}
     GridObjects.dim_alarms = 1
+    
+    tmp = GridObjects()
+    GridObjects.detailed_topo_desc = DetailedTopoDescription.from_ieee_grid(tmp)
+    
     my_cls = GridObjects.init_grid(GridObjects, force=True)
     GridObjects._clear_class_attribute()
     return my_cls
@@ -376,6 +382,34 @@ class TestActionSerialDict(unittest.TestCase):
         with tempfile.TemporaryFile(mode="w") as f:
             json.dump(fp=f, obj=dict_)
 
+    def test_set_switch_status(self):
+        act = self.helper_action(
+            {
+                "set_switch": [(0, 1), (1, -1), (2, 0), (3, -1)]
+            }
+        )
+        dict_ = act.as_serializable_dict()
+        act2 = self.helper_action(dict_)
+        assert act == act2
+        dict_2 = act.as_serializable_dict()
+        assert dict_ == dict_2
+        with tempfile.TemporaryFile(mode="w") as f:
+            json.dump(fp=f, obj=dict_)
+            
+    def test_change_switch_status(self):
+        act = self.helper_action(
+            {
+                "change_switch": [0, 3, 18]
+            }
+        )
+        dict_ = act.as_serializable_dict()
+        act2 = self.helper_action(dict_)
+        assert act == act2
+        dict_2 = act.as_serializable_dict()
+        assert dict_ == dict_2
+        with tempfile.TemporaryFile(mode="w") as f:
+            json.dump(fp=f, obj=dict_)
+        
 
 class TestMultiGrid(unittest.TestCase):
     def setUp(self) -> None:

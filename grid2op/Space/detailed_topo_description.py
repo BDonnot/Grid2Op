@@ -24,7 +24,6 @@ from grid2op.Exceptions import Grid2OpException, ImpossibleTopology
 from grid2op.Space.space_utils import (extract_from_dict,
                                        save_to_dict,
                                        _save_to_dict_str,
-                                       _save_to_dict_float,
                                        _save_to_dict_int)
 
 
@@ -347,12 +346,12 @@ class DetailedTopoDescription(object):
         
         """
         init_grid_cls : Type[GridObjects] = type(init_grid)
-        
-        n_sub = init_grid_cls.n_sub
         n_bb_per_sub = init_grid_cls.n_busbar_per_sub
         if n_bb_per_sub < 2:
             raise NotImplementedError("This function has not been implemented for less "
                                       "than 2 busbars per subs at the moment.")
+        n_sub = init_grid_cls.n_sub
+        
         res = cls()
         res._from_ieee_grid = True
         res._n_sub = n_sub
@@ -375,14 +374,14 @@ class DetailedTopoDescription(object):
                         [f"conn_node_line_or_{i}" for i in range(init_grid_cls.n_line)] +
                         [f"conn_node_line_ex_{i}" for i in range(init_grid_cls.n_line)] +
                         [f"conn_node_storage_{i}" for i in range(init_grid_cls.n_storage)] +
-                        [f"conn_node_shunt_{i}" for i in range(init_grid_cls.n_shunt)] if init_grid_cls.shunts_data_available else []
+                        ([f"conn_node_shunt_{i}" for i in range(init_grid_cls.n_shunt)] if init_grid_cls.shunts_data_available else [])
                         )
         el_breaker_conn_node = ([f"conn_node_breaker_load_{i}" for i in range(init_grid_cls.n_load)] + 
                                 [f"conn_node_breaker_gen_{i}" for i in range(init_grid_cls.n_gen)] +
                                 [f"conn_node_breaker_line_or_{i}" for i in range(init_grid_cls.n_line)] +
                                 [f"conn_node_breaker_line_ex_{i}" for i in range(init_grid_cls.n_line)] +
                                 [f"conn_node_breaker_storage_{i}" for i in range(init_grid_cls.n_storage)] +
-                                [f"conn_node_breaker_shunt_{i}" for i in range(init_grid_cls.n_shunt)] if init_grid_cls.shunts_data_available else []
+                                ([f"conn_node_breaker_shunt_{i}" for i in range(init_grid_cls.n_shunt)] if init_grid_cls.shunts_data_available else [])
                                 )
         res.conn_node_name = np.array(bb_conn_node + 
                                       el_conn_node +
@@ -393,7 +392,7 @@ class DetailedTopoDescription(object):
                                               init_grid_cls.line_or_to_subid.tolist() +
                                               init_grid_cls.line_ex_to_subid.tolist() +
                                               init_grid_cls.storage_to_subid.tolist() +
-                                              init_grid_cls.shunt_to_subid.tolist() if init_grid_cls.shunts_data_available else []
+                                              (init_grid_cls.shunt_to_subid.tolist() if init_grid_cls.shunts_data_available else [])
                                               )
                                           )
         n_conn_nodes = res.conn_node_name.shape[0]

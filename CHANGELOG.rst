@@ -112,6 +112,8 @@ Native multi agents support:
   should be made explicitely with a call
   to `backend.get_xxx_info_with_copy()`.
 - [FIXED] some issues with gym classes
+- [FIXED] compatibility of `BaseAction` with detachment 
+  (was missing on some method)
 - [ADDED] lazy observation attributes concept (does not read unused 
   attributes)
 - [ADDED] the `xxx_with_copy` method of the `Backend` (*eg* 
@@ -127,6 +129,8 @@ Native multi agents support:
 - [IMPROVED] classes for action and observation classes are now easier to 
   initialize (added the `finalize_class_definition` classmethod)
 - [IMPROVED] speed of the PandapowerBackend (avoid making unnecessary copies)
+- [IMPROVED] overall class `PlayableAction` in various way (faster to create, 
+  easier to override etc.)
 
 [1.12.1] - 2025-08-28
 ----------------------

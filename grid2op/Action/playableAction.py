@@ -11,6 +11,7 @@ from typing import Optional, Dict, Literal
 
 from grid2op.Exceptions import AmbiguousAction
 from grid2op.Action.baseAction import BaseAction
+from grid2op.Exceptions.grid2OpException import Grid2OpException
 
 
 class PlayableAction(BaseAction):
@@ -51,21 +52,26 @@ class PlayableAction(BaseAction):
     attr_list_set = set(attr_list_vect)
     shunt_added = True  # no shunt here
 
+    authorized_keys_to_digest = {
+        "set_line_status": BaseAction._digest_set_status,
+        "change_line_status": BaseAction._digest_change_status,
+        "set_bus": BaseAction._digest_setbus,
+        "change_bus": BaseAction._digest_change_bus,
+        "redispatch": BaseAction._digest_redispatching,
+        "set_storage": BaseAction._digest_storage,
+        "curtail": BaseAction._digest_curtailment,
+        "raise_alarm": BaseAction._digest_alarm,
+        "raise_alert": BaseAction._digest_alert,
+        "detach_load": BaseAction._digest_detach_load,  # new in 1.11.0
+        "detach_gen": BaseAction._digest_detach_gen,  # new in 1.11.0
+        "detach_storage": BaseAction._digest_detach_storage,  # new in 1.11.0
+        "set_switch": BaseAction._digest_set_switch,
+        "change_switch": BaseAction._digest_change_switch,
+    }
+    
     def __init__(self, _names_chronics_to_backend: Optional[Dict[Literal["loads", "prods", "lines"], Dict[str, str]]]=None):
         super().__init__(_names_chronics_to_backend)
-
-        self.authorized_keys_to_digest = {
-            "set_line_status": self._digest_set_status,
-            "change_line_status": self._digest_change_status,
-            "set_bus": self._digest_setbus,
-            "change_bus": self._digest_change_bus,
-            "redispatch": self._digest_redispatching,
-            "set_storage": self._digest_storage,
-            "curtail": self._digest_curtailment,
-            "raise_alarm": self._digest_alarm,
-            "raise_alert": self._digest_alert,
-        }
-
+        
     def __call__(self):
         """
          .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
@@ -114,6 +120,23 @@ class PlayableAction(BaseAction):
             {},
         )
 
+    @classmethod
+    def _add_shunt_data(cls):
+        # don't add shunts for this class
+        pass
+    
+    @classmethod
+    def _aux_act_derived_finalize_class_definition(cls):
+        # added check to make sure the class
+        # is well formed
+        for el in cls.attr_list_vect:
+            mapping_human = cls.mapping_vect_auth_keys[el]
+            if (mapping_human in cls.authorized_keys and 
+                mapping_human not in cls.authorized_keys_to_digest):
+                raise Grid2OpException(f"Misformed action class: attribute {el} "
+                                        f"(usable with key {mapping_human}) should "
+                                        "be in cls.authorized_keys_to_digest")
+    
     def update(self, dict_):
         """
          .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
@@ -140,12 +163,12 @@ class PlayableAction(BaseAction):
 
         if dict_ is None:
             return self
-
+        cls = type(self)
         for kk in dict_.keys():
-            if kk not in self.authorized_keys:
-                warn = warn_msg.format(kk, self.authorized_keys)
+            if kk not in cls.authorized_keys:
+                warn = warn_msg.format(kk, cls.authorized_keys)
                 warnings.warn(warn)
             else:
-                self.authorized_keys_to_digest[kk](dict_)
+                cls.authorized_keys_to_digest[kk](self, dict_)
 
         return self

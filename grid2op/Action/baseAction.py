@@ -66,7 +66,7 @@ class BaseAction(GridObjects):
     - the production and voltage setpoint of the generator units
     - the amount of power consumed (for both active and reactive part) for load
     - disconnect powerlines
-    - change the topology of the _grid.
+    - change the topology of the grid.
 
     To be valid, an action should be convertible to a tuple of 5 elements:
 
@@ -161,17 +161,22 @@ class BaseAction(GridObjects):
     were not possible with grid2op. At time of writing, we could think about changing the "tap" of a transformer
     or a phase-shifting transformer for example.
 
+    .. versionadded: 1.13.0
+    
+    From grid2op 1.13.0, it is possible (if the switches are visible from grid2op) to directly
+    manipulate switches from the action.
+    
     Attributes
     ----------
 
-    _private_set_line_status: :class:`numpy.ndarray`, dtype:int
+    _set_line_status: :class:`numpy.ndarray`, dtype:int
         For each powerline, it gives the effect of the action on the status of it. It should be understood as:
 
           - -1: disconnect the powerline
           - 0: don't affect the powerline
           - +1: reconnect the powerline
 
-    _private_switch_line_status: :class:`numpy.ndarray`, dtype:bool
+    _switch_line_status: :class:`numpy.ndarray`, dtype:bool
         For each powerline, it informs whether the action will switch the status of a powerline of not. It should be
         understood as followed:
 
@@ -190,7 +195,7 @@ class BaseAction(GridObjects):
               to the number of generators in the test case.
             - "prod_v": same as above but set the voltage setpoint of generator units.
 
-    _private_set_topo_vect: :class:`numpy.ndarray`, dtype:int
+    _set_topo_vect: :class:`numpy.ndarray`, dtype:int
         Similar to :attr:`BaseAction._private_set_line_status` but instead of affecting the status of powerlines, it affects the
         bus connectivity at a substation. It has the same size as the full topological vector
         (:attr:`BaseAction._dim_topo`)
@@ -239,7 +244,7 @@ class BaseAction(GridObjects):
         on a generator, and on another you ask +10 MW then the total setpoint for this generator that the environment
         will try to implement is +20MW.
 
-    _private_storage_power: :class:`numpy.ndarray`, dtype:float
+    _storage_power: :class:`numpy.ndarray`, dtype:float
         Amount of power you want each storage units to produce / absorbs. Storage units are in "loads"
         convention. This means that if you ask for a positive number, the storage unit will absorb
         power from the grid (=it will charge) and if you ask for a negative number, the storage unit
@@ -421,7 +426,7 @@ class BaseAction(GridObjects):
         import grid2op
         from grid2op.Action import BaseAction
         env_name = "educ_case14_storage"  # or any other name
-        env = grid2op.make(env_name, test=True, allow_detachment=True)
+        env = grid2op.make(env_name, test=True, allow_detachment=True, action_class=BaseAction)
 
         # for generators (method 1 showed here, but method 2 works, of course)
         act = env.action_space({"detach_gen": [gen1_id, gen2_id, ...]})
@@ -437,7 +442,7 @@ class BaseAction(GridObjects):
         import grid2op
         from grid2op.Action import BaseAction
         env_name = "educ_case14_storage"  # or any other name
-        env = grid2op.make(env_name, test=True)
+        env = grid2op.make(env_name, test=True, action_class=BaseAction)
         
         act = env.action_space()
         
@@ -445,6 +450,53 @@ class BaseAction(GridObjects):
             ...
             
         act.backend_dependant_callback = change_whatever
+        
+    From grid2op 1.13.0, you can directly act on switches (if such switches are defined
+    on your grid).
+    
+    To do that, you can, for example:
+    
+    .. code-block:: python
+    
+        import grid2op
+        # allow to use any type of actions
+        from grid2op.Action import BaseAction
+        # add "default" detailed topology to ieee grid
+        from grid2op.Backend import PandaPowerBackendWithDetailedTopo
+          
+        env_name = "educ_case14_storage"  # or any other name
+        env = grid2op.make(env_name,
+                           test=True,
+                           backend=PandaPowerBackendWithDetailedTopo(),
+                           action_class=BaseAction)
+        
+        act = env.action_space({"set_switch": [(switch_id, value), (switch_id, value), ...]})
+        # or
+        act = env.action_space()
+        act.set_switch = [(switch_id, value), (switch_id, value), ...]
+        
+    And if you prefer to reason in terms of "opening" or "closing" you can use
+    the "change" key-word :
+    
+    .. code-block:: python
+    
+        import grid2op
+        # allow to use any type of actions
+        from grid2op.Action import BaseAction
+        # add "default" detailed topology to ieee grid
+        from grid2op.Backend import PandaPowerBackendWithDetailedTopo
+        
+        env_name = "educ_case14_storage"  # or any other name
+        env = grid2op.make(env_name,
+                           test=True,
+                           backend=PandaPowerBackendWithDetailedTopo(),
+                           action_class=BaseAction)
+        
+        act = env.action_space({"change_switch": [switch_0_id, switch_1_id, ...]})
+        # or
+        act = env.action_space()
+        act.change_switch = [switch_0_id, switch_1_id, ...]
+    
     """
 
     authorized_keys = {
@@ -543,6 +595,42 @@ class BaseAction(GridObjects):
     
     #: perf optim
     _IS_CLS_FINALIZED = False
+    
+    #: perf optims (for copy)
+    attr_simple_for_cpy = [
+        "_modif_inj",
+        "_modif_shunt",
+        "_modif_set_bus",
+        "_modif_change_bus",
+        "_modif_set_status",
+        "_modif_change_status",
+        "_modif_redispatch",
+        "_modif_storage",
+        "_modif_curtailment",
+        "_modif_alarm",
+        "_modif_alert",
+        "_modif_detach_load",
+        "_modif_detach_gen",
+        "_modif_detach_storage",
+        "_single_act",
+        "_modif_set_switch",
+        "_modif_change_switch",
+        "_cached_is_not_ambiguous",
+    ]
+
+    attr_vect_for_cpy = [
+        "_private_set_line_status",
+        "_private_switch_line_status",
+        "_private_set_topo_vect",
+        "_private_change_bus_vect",
+        "_private_hazards",
+        "_private_maintenance",
+        "_private_redispatch",
+        "_private_storage_power",
+        "_private_curtail",
+        "_private_raise_alarm",
+        "_private_raise_alert",
+    ]  # updated with shunts or detachment or switches
     
     def __init__(self, _names_chronics_to_backend: Optional[Dict[Literal["loads", "prods", "lines"], Dict[str, str]]]=None):
         """
@@ -646,133 +734,133 @@ class BaseAction(GridObjects):
     # init the private argument when needed
     
     @property
-    def _redispatch(self) -> np.ndarray:
+    def _redispatch(self) -> "np.ndarray[dt_float]":
         if self._private_redispatch is None:
             cls = type(self)
             self._private_redispatch = cls._build_attr("_redispatch")
         return self._private_redispatch
     
     @property
-    def _set_line_status(self) -> np.ndarray:
+    def _set_line_status(self) -> "np.ndarray[dt_int]":
         if self._private_set_line_status is None:
             cls = type(self)
             self._private_set_line_status = cls._build_attr("_set_line_status")
         return self._private_set_line_status
     
     @property
-    def _switch_line_status(self) -> np.ndarray:
+    def _switch_line_status(self) -> "np.ndarray[dt_bool]":
         if self._private_switch_line_status is None:
             cls = type(self)
             self._private_switch_line_status = cls._build_attr("_switch_line_status")
         return self._private_switch_line_status
     
     @property
-    def _set_topo_vect(self) -> np.ndarray:
+    def _set_topo_vect(self) -> "np.ndarray[dt_int]":
         if self._private_set_topo_vect is None:
             cls = type(self)
             self._private_set_topo_vect = cls._build_attr("_set_topo_vect")
         return self._private_set_topo_vect
     
     @property
-    def _change_bus_vect(self) -> np.ndarray: 
+    def _change_bus_vect(self) -> 'np.ndarray[dt_bool]': 
         if self._private_change_bus_vect is None:
             cls = type(self)            
             self._private_change_bus_vect = cls._build_attr("_change_bus_vect")
         return self._private_change_bus_vect
     
     @property
-    def _hazards(self) -> np.ndarray:
+    def _hazards(self) -> 'np.ndarray[dt_bool]':
         if self._private_hazards is None:
             cls = type(self)
             self._private_hazards = cls._build_attr("_hazards")
         return self._private_hazards
     
     @property
-    def _maintenance(self) ->   np.ndarray:
+    def _maintenance(self) -> "np.ndarray[dt_bool]":
         if self._private_maintenance is None:
             cls = type(self)           
             self._private_maintenance = cls._build_attr("_maintenance")
         return self._private_maintenance    
     
     @property
-    def _storage_power(self) -> np.ndarray:
+    def _storage_power(self) -> "np.ndarray[dt_float]":
         if self._private_storage_power is None:
             cls = type(self)
             self._private_storage_power = cls._build_attr("_storage_power") 
         return self._private_storage_power
     
     @property
-    def _curtail(self) -> np.ndarray:
+    def _curtail(self) -> "np.ndarray[dt_float]":
         if self._private_curtail is None:
             cls = type(self)
             self._private_curtail = cls._build_attr("_curtail")
         return self._private_curtail
     
     @property
-    def _shunt_p(self) -> Optional[np.ndarray]:
+    def _shunt_p(self) -> "Optional[np.ndarray[dt_float]]":
         cls = type(self)
         if self._private_shunt_p is None and cls.shunts_data_available:
             self._private_shunt_p = cls._build_attr("_shunt_p")
         return self._private_shunt_p
     
     @property
-    def _shunt_q(self) -> Optional[np.ndarray]:
+    def _shunt_q(self) -> "Optional[np.ndarray[dt_float]]":
         cls = type(self)
         if self._private_shunt_q is None and cls.shunts_data_available:
             self._private_shunt_q = cls._build_attr("_shunt_q")
         return self._private_shunt_q    
     
     @property
-    def _shunt_bus(self) -> Optional[np.ndarray]: 
+    def _shunt_bus(self) -> "Optional[np.ndarray[dt_int]]": 
         cls = type(self)
         if self._private_shunt_bus is None and cls.shunts_data_available:
             self._private_shunt_bus = cls._build_attr("_shunt_bus")
         return self._private_shunt_bus  
     
     @property
-    def _raise_alarm(self) -> np.ndarray:
+    def _raise_alarm(self) -> "np.ndarray[dt_bool]":
         if self._private_raise_alarm is None:
             cls = type(self)
             self._private_raise_alarm = cls._build_attr("_raise_alarm")
         return self._private_raise_alarm    
     
     @property
-    def _raise_alert(self) -> np.ndarray:
+    def _raise_alert(self) -> "np.ndarray[dt_bool]":
         if self._private_raise_alert is None:
             cls = type(self)
             self._private_raise_alert = cls._build_attr("_raise_alert")
         return self._private_raise_alert    
     
     @property
-    def _detach_load(self) -> Optional[np.ndarray]:
+    def _detach_load(self) -> "Optional[np.ndarray[dt_bool]]":
         cls = type(self)
         if self._private_detach_load is None and cls.detachment_is_allowed:   
             self._private_detach_load = cls._build_attr("_detach_load")
         return self._private_detach_load    
     
     @property
-    def _detach_gen(self) -> Optional[np.ndarray]:
+    def _detach_gen(self) -> "Optional[np.ndarray[dt_bool]]":
         cls = type(self)
         if self._private_detach_gen is None and cls.detachment_is_allowed:
             self._private_detach_gen = cls._build_attr("_detach_gen")
         return self._private_detach_gen
     
     @property
-    def _detach_storage(self) -> Optional[np.ndarray]:
+    def _detach_storage(self) -> "Optional[np.ndarray[dt_bool]]":
         cls = type(self)
         if self._private_detach_storage is None and cls.detachment_is_allowed:
             self._private_detach_storage = cls._build_attr("_detach_storage")
         return self._private_detach_storage
     
     @property
-    def _set_switch_status(self) -> Optional[np.ndarray]:
+    def _set_switch_status(self) -> "Optional[np.ndarray[dt_int]]":
         cls = type(self)
         if self._private_set_switch_status is None and cls.detailed_topo_desc is not None:
             self._private_set_switch_status = cls._build_attr("_set_switch_status")
         return self._private_set_switch_status
     
     @property
-    def _change_switch_status(self) -> Optional[np.ndarray]:
+    def _change_switch_status(self) -> "Optional[np.ndarray[dt_bool]]":
         cls = type(self)
         if self._private_change_switch_status is None and cls.detailed_topo_desc is not None:
             self._private_change_switch_status = cls._build_attr("_set_switch_status")
@@ -896,55 +984,11 @@ class BaseAction(GridObjects):
         return type(self).dtypes()
     
     def _aux_copy(self, other: Self) -> None:
-        attr_simple = [
-            "_modif_inj",
-            "_modif_shunt",
-            "_modif_set_bus",
-            "_modif_change_bus",
-            "_modif_set_status",
-            "_modif_change_status",
-            "_modif_redispatch",
-            "_modif_storage",
-            "_modif_curtailment",
-            "_modif_alarm",
-            "_modif_alert",
-            "_modif_detach_load",
-            "_modif_detach_gen",
-            "_modif_detach_storage",
-            "_single_act",
-            "_modif_set_switch",
-            "_modif_change_switch",
-            "_cached_is_not_ambiguous",
-        ]
-
-        attr_vect = [
-            "_private_set_line_status",
-            "_private_switch_line_status",
-            "_private_set_topo_vect",
-            "_private_change_bus_vect",
-            "_private_hazards",
-            "_private_maintenance",
-            "_private_redispatch",
-            "_private_storage_power",
-            "_private_curtail",
-            "_private_raise_alarm",
-            "_private_raise_alert",
-        ]
-
-        cls = type(self)
-        if cls.shunts_data_available:
-            attr_vect += ["_private_shunt_p", "_private_shunt_q", "_private_shunt_bus"]
-
-        if cls.detachment_is_allowed:
-            attr_vect += ["_private_detach_load", "_private_detach_gen", "_private_detach_storage"]
-            
-        if cls.detailed_topo_desc is not None:
-            attr_vect += ["_private_set_switch_status", "_private_change_switch_status"]
-            
-        for attr_nm in attr_simple:
+        cls = type(self)            
+        for attr_nm in cls.attr_simple_for_cpy:
             setattr(other, attr_nm, getattr(self, attr_nm))
 
-        for attr_nm in attr_vect:
+        for attr_nm in cls.attr_vect_for_cpy:
             arr = getattr(self, attr_nm)
             if arr is not None:
                 arr_oth = getattr(other, attr_nm)
@@ -1161,23 +1205,21 @@ class BaseAction(GridObjects):
                     del res[attr_key]
                 
         if cls.detailed_topo_desc is not None:
-            # TODO detailed topo
-            
             if self._modif_set_switch and self._private_set_switch_status is not None:
-                res["set_switch_status"] = [
+                res["set_switch"] = [
                     (int(id_), int(val))
                     for id_, val in enumerate(self._private_set_switch_status)
                     if val != 0
                 ]
-                if not res["set_switch_status"]:
-                    del res["set_switch_status"]
+                if not res["set_switch"]:
+                    del res["set_switch"]
                     
             if self._modif_change_switch and self._private_change_switch_status is not None:
-                res["change_switch_status"] = [
+                res["change_switch"] = [
                     int(id_) for id_, val in enumerate(self._private_change_switch_status) if val
                 ]
-                if not res["change_switch_status"]:
-                    del res["change_switch_status"]
+                if not res["change_switch"]:
+                    del res["change_switch"]
         return res
 
     @classmethod
@@ -1189,7 +1231,23 @@ class BaseAction(GridObjects):
             cls._add_shunt_data()
             cls._update_value_set()
             cls._build_ref_attributes()
+            
+            if cls.shunts_data_available:
+                cls.attr_vect_for_cpy += ["_private_shunt_p", "_private_shunt_q", "_private_shunt_bus"]
+
+            if cls.detachment_is_allowed:
+                cls.attr_vect_for_cpy += ["_private_detach_load", "_private_detach_gen", "_private_detach_storage"]
+                
+            if cls.detailed_topo_desc is not None:
+                cls.attr_vect_for_cpy += ["_private_set_switch_status", "_private_change_switch_status"]
+            
+            cls._aux_act_derived_finalize_class_definition()
+            
             cls._IS_CLS_FINALIZED = True
+            
+    @classmethod
+    def _aux_act_derived_finalize_class_definition(cls):
+        pass
         
     @classmethod
     def _add_shunt_data(cls):
@@ -1240,7 +1298,7 @@ class BaseAction(GridObjects):
         if self._modif_alert:
             return (self._private_raise_alert).nonzero[0]
         else:
-            return type(self)._build_attr("_raise_alarm")
+            return np.zeros(0, dtype=bool)
 
     @classmethod
     def _aux_process_old_compat(cls):
@@ -1253,6 +1311,7 @@ class BaseAction(GridObjects):
         # deactivate storage
         if "set_storage" in cls.authorized_keys:
             cls.authorized_keys.remove("set_storage")
+            
         if "_storage_power" in cls.attr_list_vect:
             cls.attr_list_vect.remove("_storage_power")
             cls.attr_list_set = set(cls.attr_list_vect)
@@ -1558,7 +1617,7 @@ class BaseAction(GridObjects):
     def get_set_line_status_vect(self) -> np.ndarray:
         """
         Computes and returns a vector that can be used in the :func:`BaseAction.__call__` with the keyword
-        "set_status" if building an :class:`BaseAction`.
+        "set_line_status" if building an :class:`BaseAction`.
 
         **NB** this vector is not the internal vector of this action but corresponds to "do nothing" action.
 
@@ -1569,12 +1628,12 @@ class BaseAction(GridObjects):
             "set_status" if building an :class:`BaseAction`.
 
         """
-        return np.full(shape=type(self).n_line, fill_value=0, dtype=dt_int)
+        return type(self)._build_attr("_set_line_status")
 
     def get_change_line_status_vect(self) -> np.ndarray:
         """
         Computes and returns a vector that can be used in the :func:`BaseAction.__call__` with the keyword
-        "set_status" if building an :class:`BaseAction`.
+        "change_line_status" if building an :class:`BaseAction`.
 
         **NB** this vector is not the internal vector of this action but corresponds to "do nothing" action.
 
@@ -1582,10 +1641,10 @@ class BaseAction(GridObjects):
         -------
         res: :class:`numpy.array`, dtype:dt_bool
             A vector that doesn't affect the grid, but can be used in :func:`BaseAction.__call__` with the keyword
-            "set_status" if building an :class:`BaseAction`.
+            "change_line_status" if building an :class:`BaseAction`.
 
         """
-        return np.full(shape=type(self).n_line, fill_value=False, dtype=dt_bool)
+        return type(self)._build_attr("_switch_line_status")
     
     def _aux_eq_detachment_aux_both_ok(self, other, el_nm: Literal["load", "gen", "storage"]) -> bool:
         attr_chgt = f"_modif_detach_{el_nm}"
@@ -1826,10 +1885,6 @@ class BaseAction(GridObjects):
         # shunts are the same
         if not self._aux_eq_shunts(other):
             return False
-
-        # shunts are the same
-        if not self._aux_eq_shunts(other):
-            return False
         
         return True
 
@@ -1845,72 +1900,6 @@ class BaseAction(GridObjects):
             and (not self._modif_set_switch)
             and (not self._modif_change_switch)
         )
-    
-    def compute_switches_status(self):
-        """This function is used to "process" the action on switches and convert
-        it on action of type set_bus / change_bus
-
-        It can raise some :class:`grid2op.Exceptions.AmbiugousAction` in different cases:
-        - trying to "set" and "change" the same switch
-        - trying to "set" and "change" the same busbar coupler
-        - trying to `set_bus` and modify (set or change) busbar coupler
-        - trying to `change_bus` and modify (set or change) busbar coupler
-        - trying to `set_bus` a given element and (in the same action) modify
-          (set or change) a switch that acts on this same element
-        - trying to `change_bus` a given element and (in the same action) modify
-          (set or change) a switch that acts on this same element
-
-        It does not modify the action.
-        """
-
-        # TODO detailed topo : implement it !
-        # set_line_status = 1 * self._set_line_status  # needed ?
-        
-        # switch_line_status = copy.deepcopy(self._switch_line_status)  # needed ?
-        # topology changed
-        set_topo_vect = self._set_topo_vect.copy()
-        change_bus_vect = self._change_bus_vect.copy()
-        shunt_bus = self._shunt_bus.copy()
-        dtd = type(self).detailed_topo_desc
-
-        if dtd is None:
-            # nothing to do in this case
-            return set_topo_vect, change_bus_vect, shunt_bus
-
-        # check ambiguous behaviour
-        ## switches
-        if (self._private_set_switch_status is not None and
-            self._private_change_switch_status is not None and
-            ((self._private_set_switch_status != 0) & self._private_change_switch_status).any()
-        ):
-            raise AmbiguousAction("Trying to both set the status of some switches (with 'set_switch') "
-                                  "and change it (with 'change_switch') using the same action.")
-
-        if self._private_set_switch_status is not None:
-            id_topo_vect_set = dtd.switches_to_topovect_id[(self._private_set_switch_status != 0)]
-            id_topo_vect_set = id_topo_vect_set[id_topo_vect_set != -1]
-            if (set_topo_vect[id_topo_vect_set] != 0).any():
-                raise AmbiguousAction("Trying to modify the status of some switches (with 'set_switch') "
-                                    "and set the element to a given busbar (using `set_bus`)")
-            if change_bus_vect[id_topo_vect_set].any():
-                raise AmbiguousAction("Trying to modify the status of some switches (with 'set_switch') "
-                                    "and change the busbar to which the same element is connected "
-                                    "(using `change_bus`)")
-        if self._private_change_switch_status is not None:
-            id_topo_vect_change = dtd.switches_to_topovect_id[self._private_change_switch_status]
-            id_topo_vect_change = id_topo_vect_change[id_topo_vect_change != -1]
-            if (set_topo_vect[id_topo_vect_change] != 0).any():
-                raise AmbiguousAction("Trying to modify the status of some switches (with 'change_switch') "
-                                    "and set the element to a given busbar (using `set_bus`)")
-            if change_bus_vect[id_topo_vect_change].any():
-                raise AmbiguousAction("Trying to modify the status of some switches (with 'change_switch') "
-                                    "and change the busbar to which the same element is connected "
-                                    "(using `change_bus`)")
-        # TODO detailed topo : make it ambiguous to modify a substation topology
-        # with set_bus / change_bus and with set_switch / change_switch at the same same time
-
-        # TODO detailed topo put elsewhere maybe ?
-        raise NotImplementedError("Not implemented yet, maybe check detailed_topo_desc.from_switches_position")
     
     def _aux_get_topo_impact_notopo(self, _store_in_cache: bool):
         cls = type(self)
@@ -2258,6 +2247,9 @@ class BaseAction(GridObjects):
             For grid2op equal or lower to 1.9.5 this function was bugged in some corner cases. We highly recommend
             upgrading if you use this function with these grid2op versions.
             
+        .. warning::
+            This function does not check anything related to "switches".
+            
         Examples
         ---------
         
@@ -2417,45 +2409,53 @@ class BaseAction(GridObjects):
 
         """
         # False(line is disconnected) / True(line is connected)
-        self._private_set_line_status[:] = 0
-        self._private_switch_line_status[:] = False
+        self._private_set_line_status = None
+        self._private_switch_line_status = None
 
         # injection change
         self._dict_inj = {}
 
         # topology changed
-        self._private_set_topo_vect[:] = 0
-        self._private_change_bus_vect[:] = False
+        self._private_set_topo_vect= None
+        self._private_change_bus_vect= None
 
         # add the hazards and maintenance usefull for saving.
-        self._private_hazards[:] = False
-        self._private_maintenance[:] = False
+        self._private_hazards= None
+        self._private_maintenance = None
 
         # redispatching vector
-        self._private_redispatch[:] = 0.0
+        self._private_redispatch = None
 
         # storage
-        self._private_storage_power[:] = 0.0
+        self._private_storage_power= None
 
         # storage
-        self._private_curtail[:] = -1.0
+        self._private_curtail = None
 
         self._vectorized = None
         self._lines_impacted = None
         self._subs_impacted = None
 
         # shunts
-        if type(self).shunts_data_available:
-            self._private_shunt_p[:] = np.nan
-            self._private_shunt_q[:] = np.nan
-            self._private_shunt_bus[:] = 0
+        self._private_shunt_p = None
+        self._private_shunt_q = None
+        self._private_shunt_bus = None
 
         # alarm
-        self._private_raise_alarm[:] = False        
+        self._private_raise_alarm = None     
         
         # alert
-        self._private_raise_alert[:] = False
+        self._private_raise_alert = None
 
+        # detachment
+        self._private_detach_gen = None
+        self._private_detach_load = None
+        self._private_detach_storage = None
+        
+        # switches
+        self._private_set_switch_status = None
+        self._private_change_switch_status = None
+        
         self._reset_modified_flags()
 
     def _assign_iadd_or_warn(self, attr_name, new_value):
@@ -2529,22 +2529,26 @@ class BaseAction(GridObjects):
                 self._storage_power[ok_ind] += set_storage[ok_ind]
                 
     def _aux_iadd_modif_flags(self, other: Self):
-        self._modif_change_bus = self._modif_change_bus or other._modif_change_bus
-        self._modif_set_bus = self._modif_set_bus or other._modif_set_bus
-        self._modif_change_status = (
-            self._modif_change_status or other._modif_change_status
-        )
-        self._modif_set_status = self._modif_set_status or other._modif_set_status
-        self._modif_inj = self._modif_inj or other._modif_inj
-        self._modif_shunt = self._modif_shunt or other._modif_shunt
-        self._modif_redispatch = self._modif_redispatch or other._modif_redispatch
-        self._modif_storage = self._modif_storage or other._modif_storage
-        self._modif_curtailment = self._modif_curtailment or other._modif_curtailment
-        self._modif_alarm = self._modif_alarm or other._modif_alarm
-        self._modif_alert = self._modif_alert or other._modif_alert
-        self._modif_detach_load = self._modif_detach_load or other._modif_detach_load
-        self._modif_detach_gen = self._modif_detach_gen or other._modif_detach_gen
-        self._modif_detach_storage = self._modif_detach_storage or other._modif_detach_storage
+        li_attr_modif = [
+            "_modif_change_bus",
+            "_modif_set_bus",
+            "_modif_change_status",
+            "_modif_set_status",
+            "_modif_inj",
+            "_modif_shunt",
+            "_modif_redispatch",
+            "_modif_storage",
+            "_modif_curtailment",
+            "_modif_alarm",
+            "_modif_alert",
+            "_modif_detach_load",
+            "_modif_detach_gen",
+            "_modif_detach_storage",
+            "_modif_set_switch",
+            "_modif_change_switch",
+        ]
+        for attr_nm in li_attr_modif:
+            setattr(self, attr_nm, getattr(self, attr_nm) or getattr(other, attr_nm))
 
     def _aux_iadd_shunt(self, other: "BaseAction"):
         if not type(other).shunts_data_available:
@@ -2659,6 +2663,43 @@ class BaseAction(GridObjects):
         self._assign_iadd_or_warn("_set_topo_vect", me_set)
         self._assign_iadd_or_warn("_change_bus_vect", me_change)
         
+    def _aux_iadd_set_change_switch(self, other: "BaseAction"):
+        other_set = other._private_set_switch_status
+        other_change = other._private_change_switch_status
+        if other_set is None and other_change is None:
+            return
+        me_set = self._set_switch_status.copy()
+        me_change = self._change_switch_status.copy()
+        
+        if other_set is None:
+            other_set = type(self)._build_attr("_set_switch_status")
+        if other_change is None:
+            other_change = type(self)._build_attr("_change_switch_status")
+
+        # i change, but so does the other, i do nothing
+        canceled_change = other_change & me_change
+        # i dont change, the other change, i change
+        update_change = other_change & ~me_change
+        # Defered apply to prevent conflicts
+        me_change[canceled_change] = False
+        me_change[update_change] = True
+
+        # i change, but the other set, it's erased
+        me_change[other_set != 0 & me_change] = False
+
+        # i set, but the other change, set to the opposite
+        inverted_set = other_change & (me_set != 0)
+        # so change +1 becomes -1 and -1 becomes +1
+        me_set[inverted_set] *= -1
+        # Has been inverted, cancel change
+        me_change[inverted_set] = False
+
+        # i set, the other set
+        me_set[other_set != 0] = other_set[other_set != 0]
+
+        self._assign_iadd_or_warn("_set_switch_status", me_set)
+        self._assign_iadd_or_warn("_change_switch_status", me_change)
+        
     def __iadd__(self, other: Self):
         """
         Add an action to this one.
@@ -2724,6 +2765,8 @@ class BaseAction(GridObjects):
         if other._private_raise_alert is not None:
             self._raise_alert[other._private_raise_alert] = True
 
+        if type(self).detailed_topo_desc is not None:
+            self._aux_iadd_set_change_switch(other)
 
         # the modif flags
         self._aux_iadd_modif_flags(other)
@@ -2820,9 +2863,9 @@ class BaseAction(GridObjects):
         # remark: curtailment is handled by an algorithm in the environment, so don't need to be returned here
         shunts = {}
         if type(self).shunts_data_available:
-            shunts["_private_shunt_p"] = self._private_shunt_p
-            shunts["_private_shunt_q"] = self._private_shunt_q
-            shunts["_private_shunt_bus"] = self._private_shunt_bus
+            shunts["_shunt_p"] = self._private_shunt_p
+            shunts["_shunt_q"] = self._private_shunt_q
+            shunts["_shunt_bus"] = self._private_shunt_bus
         # other remark: alarm and alert are not handled in the backend, this is why it does not appear here !
         return (
             dict_inj,
@@ -3139,11 +3182,6 @@ class BaseAction(GridObjects):
 
     def _digest_change_switch(self, dict_):
         if "change_switch" in dict_:
-            # the action will switch the status of the powerline
-            # for each element equal to 1 in this dict_["change_line_status"]
-            # if the status is "disconnected" it will be transformed into "connected"
-            # and if the status is "connected" it will be switched to "disconnected"
-            # Lines with "0" in this vector are not impacted.
             if dict_["change_switch"] is not None:
                 self.change_switch = dict_["change_switch"]
 
@@ -3153,6 +3191,15 @@ class BaseAction(GridObjects):
             setattr(self, attr_key, dict_[attr_key])
             # eg self.detach_load = dict_["detach_load"]  # this uses the public property !
 
+    def _digest_detach_load(self, dict_):
+        return self._digest_detach_eltype("load", dict_)
+    
+    def _digest_detach_gen(self, dict_):
+        return self._digest_detach_eltype("gen", dict_)
+    
+    def _digest_detach_storage(self, dict_):
+        return self._digest_detach_eltype("storage", dict_)
+    
     def _digest_redispatching(self, dict_):
         if "redispatch" in dict_:
             self.redispatch = dict_["redispatch"]
@@ -3211,7 +3258,7 @@ class BaseAction(GridObjects):
         self._lines_impacted = None
 
     @staticmethod
-    def _check_keys_exist(action_cls:GridObjects, act_dict):
+    def _check_keys_exist(action_cls : "Type[BaseAction]", act_dict):
         """
         Checks whether an action has the same keys in its
         action space as are present in the provided dictionary.
@@ -3335,7 +3382,8 @@ class BaseAction(GridObjects):
             - "detach_gen": TODO
             - "detach_storage": TODO
             - "shunt": TODO
-            - TODO detailed topo
+            - "set_switch": TODO
+            - "change_switch": TODO
 
             **NB**: CHANGES: you can reconnect a powerline without specifying on each bus you reconnect it at both its
             ends. In that case the last known bus id for each its end is used.
@@ -3709,7 +3757,9 @@ class BaseAction(GridObjects):
 
           - For switches, ambiguous actions can come from:
 
-            - TODO
+            - user tried to both "set" and "change" the same switch
+            - user tried to set / change the topology of a substation AND set / change the 
+              status of switches at the same time.
 
         In case of need to overload this method, it is advise to still call this one from the base :class:`BaseAction`
         with ":code:`super()._check_for_ambiguity()`" or ":code:`BaseAction._check_for_ambiguity(self)`".
@@ -4471,12 +4521,45 @@ class BaseAction(GridObjects):
                     res.append(f"\t - Detach {el}: {_detach_xxx.nonzero()[0]}")
                 else:
                     res.append(f"\t - Not detach any {el}")
-                    
+        
+        if my_cls.detailed_topo_desc is not None:
+            # handle switches
+            if self._modif_set_switch:
+                mask_close : "np.ndarray[bool]" = self._private_set_switch_status == 1
+                if mask_close.any():
+                    res.append(f"\t - Force closing of switches {mask_close.nonzero()[0]}")
+                mask_open : "np.ndarray[bool]" = self._private_set_switch_status == -1
+                if mask_open.any():
+                    res.append(f"\t - Force oppening of switches {mask_open.nonzero()[0]}")
+            else:
+                res.append("\t - Not force any switches state")
+                
+            if self._modif_change_switch:
+                mask_changed = self._private_change_switch_status
+                res.append(f"\t - Change the state of switches {mask_changed.nonzero()[0]}")
+            else:
+                res.append("\t - Not change any switches state")
         return "\n".join(res)
 
     def impact_on_objects(self) -> dict:
         """
         This will return a dictionary which contains details on objects that will be impacted by the action.
+
+        .. warning::
+            We do not recommend to use this function as it is not up to date.
+            
+            Missing in the dictionnary are:
+            
+            - maintenance
+            - hazards
+            - shunts
+            - detachment (load, gen or storage unit)
+            - switches (set / change)
+            
+            Use any of act.get_serializable_dict() or act.as_dict() for up to date versions.
+            
+        .. seealso::
+            :func:`BaseAction.get_serializable_dict` or :func:`BaseAction.as_dict` 
 
         Returns
         -------
@@ -4709,11 +4792,11 @@ class BaseAction(GridObjects):
     def _aux_as_dict_shunt(self, res): 
         tmp = {}
         if self._private_shunt_p is not None and np.any(np.isfinite(self._private_shunt_p)):
-            tmp["shunt_p"] = 1.0 * self._private_shunt_p
+            tmp["shunt_p"] = self._private_shunt_p.copy()
         if self._private_shunt_q is not None and np.any(np.isfinite(self._private_shunt_q)):
-            tmp["shunt_q"] = 1.0 * self._private_shunt_q
+            tmp["shunt_q"] = self._private_shunt_q.copy()
         if self._private_shunt_bus is not None and np.any(self._private_shunt_bus != 0):
-            tmp["shunt_bus"] = 1.0 * self._private_shunt_bus
+            tmp["shunt_bus"] = self._private_shunt_bus.copy()
         if tmp:
             res["shunt"] = tmp
     
@@ -4744,6 +4827,25 @@ class BaseAction(GridObjects):
             res["maintenance"] = self._private_maintenance.nonzero()[0]
             res["nb_maintenance"] = self._private_maintenance.sum()
         
+    
+    def _aux_as_dict_detachment(self, res):
+        for attr, attr_nm in zip([self._private_detach_gen, self._private_detach_load, self._private_detach_storage],
+                                 ["detach_gen", "detach_load", "detach_storage"]):
+            if attr is not None and attr.any():
+                res[attr_nm] = attr.nonzero()[0]
+    
+    def _aux_as_dict_detailed_topo(self, res):
+        # handles topology change
+        if self._private_change_switch_status is not None and (self._private_change_switch_status).any():
+            res["change_switch"] = self._private_change_switch_status.nonzero()[0]
+
+        # handles topology set
+        if self._private_set_switch_status is not None and (self._private_set_switch_status!= 0).any():
+            res["set_switch"] = {}
+            for sw_id, sw_pos in enumerate(self._private_set_switch_status):
+                if sw_pos == 0:
+                    continue
+                res["set_switch"][sw_id] = sw_pos
         
     def as_dict(self) -> Dict[Literal["load_p", "load_q", "prod_p", "prod_v",
                                       "change_line_status", "set_line_status",
@@ -4805,6 +4907,11 @@ class BaseAction(GridObjects):
           * `storage_power`: the setpoint for production / consumption for all storage units
           * `curtailment`: the curtailment performed on all generator
           * `shunt` :
+          * `detach_gen`: 
+          * `detach_load`: 
+          * `detach_storage`:
+          * `set_switch` :
+          * `change_switch`: 
           
           TODO detailed topo
 
@@ -4837,7 +4944,12 @@ class BaseAction(GridObjects):
         if type(self).shunts_data_available:
             self._aux_as_dict_shunt(res)
 
-        # TODO detailed topo
+        if type(self).detachment_is_allowed:
+            self._aux_as_dict_detachment(res)
+            
+        if type(self).detailed_topo_desc is not None:
+            self._aux_as_dict_detailed_topo(res)
+            
         return res
 
     def get_types(self) -> Tuple[bool, bool, bool, bool, bool, bool, bool]:
@@ -4852,6 +4964,14 @@ class BaseAction(GridObjects):
         - "storage" does this action impact the production / consumption of storage units
         - "curtailment" does this action impact the non renewable generators through curtailment
 
+        .. danger::
+            For backward compatibility, there is not dedicated "type" for action on
+            "detachment" or on "switches".
+            
+            Use this method with care...
+            
+            TODO
+        
         Notes
         ------
 
@@ -5028,6 +5148,11 @@ class BaseAction(GridObjects):
         The query of these objects can only be done by id here (ie by giving the integer of the object in the backed).
         The :class:`ActionSpace` has some utilities to access them by name too.
 
+        .. warning::
+            This function does not consider detachment nor switches
+            
+            TODO
+            
         Parameters
         ----------
         _sentinel: ``None``
@@ -5170,6 +5295,11 @@ class BaseAction(GridObjects):
         """
         Retrieve the modification that will be performed on all the storage unit
 
+        .. warning::
+            This function does not consider detachment nor switches
+            
+            TODO
+
         Returns
         -------
         storage_power: ``np.ndarray``
@@ -5202,6 +5332,11 @@ class BaseAction(GridObjects):
         """
         Retrieve the modification that will be performed on all the loads
 
+        .. warning::
+            This function does not consider detachment nor switches
+            
+            TODO
+
         Returns
         -------
         load_p: ``np.ndarray``
@@ -5227,6 +5362,11 @@ class BaseAction(GridObjects):
     def get_gen_modif(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Retrieve the modification that will be performed on all the generators
+
+        .. warning::
+            This function does not consider detachment nor switches
+            
+            TODO
 
         TODO add curtailment and redispatching
 
@@ -8309,12 +8449,9 @@ class BaseAction(GridObjects):
             self._aux_decompose_as_unary_actions_storage(cls, group_storage, res)
         if self._modif_curtailment:
             self._aux_decompose_as_unary_actions_curtail(cls, group_curtail, res)
+            
+        # TODO detachment and switches !
         return res
-
-    @classmethod
-    def from_switches(cls, obs, switches_list):
-        # TODO detailed topo
-        pass
 
     def _add_act_and_remove_line_status_only_set(self, other: "BaseAction") -> "BaseAction":
         """INTERNAL
@@ -8427,11 +8564,15 @@ class BaseAction(GridObjects):
         attr_nan_list_set_str = f"set([{','.join([_key_to_proper_string(el) for el in cls.attr_nan_list_set])}])"
         aux_dict_attr_str_ = sep_.join([_get_dict_entry(k, v) for k, v in cls._DICT_ATTR_.items()])
         _dict_attr_str = f"{{{aux_dict_attr_str_}}}"
+        attr_simple_for_cpy_str = f"[{','.join([_key_to_proper_string(el) for el in cls.attr_simple_for_cpy])}]"
+        attr_vect_for_cpy_str = f"[{','.join([_key_to_proper_string(el) for el in cls.attr_vect_for_cpy])}]"
         res = f"""
     authorized_keys = {authorized_keys_str}
     attr_list_vect = {attr_list_vect_str}
     attr_nan_list_set = {attr_nan_list_set_str}
     _DICT_ATTR_ = {_dict_attr_str}
+    attr_simple_for_cpy = {attr_simple_for_cpy_str}
+    attr_vect_for_cpy = {attr_vect_for_cpy_str}
     _IS_CLS_FINALIZED = True
 """
         return res
