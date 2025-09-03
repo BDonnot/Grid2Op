@@ -386,7 +386,7 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         assert conv, f"powerflow diverge at loading with error {_}"
         l_id = 3
 
-        p_or_orig, *_ = self.backend.lines_or_info()
+        p_or_orig, *_ = self.backend.lines_or_info_with_copy()
         backend_cpy = self.backend.copy_public()
 
         self.backend._disconnect_line(l_id)
@@ -394,8 +394,8 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         assert conv, f"original backend diverged with error {_}"
         conv2 = backend_cpy.runpf(is_dc=is_dc)
         assert conv2, f"copied backend diverged with error {_}"
-        p_or_ref, *_ = self.backend.lines_or_info()
-        p_or, *_ = backend_cpy.lines_or_info()
+        p_or_ref, *_ = self.backend.lines_or_info_with_copy()
+        p_or, *_ = backend_cpy.lines_or_info_with_copy()
         assert self.compare_vect(
             p_or_orig, p_or
         ), "the copied object affects its original 'parent'"
@@ -611,9 +611,9 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         # i set up the stuff to have exactly 0 losses
         conv, *_  = self.backend.runpf(is_dc=True)
         assert conv, f"powergrid diverge after loading (even in DC) with error {_}"
-        init_flow, *_ = self.backend.lines_or_info()
-        init_lp, init_l_q, *_ = self.backend.loads_info()
-        init_gp, *_ = self.backend.generators_info()
+        init_flow, *_ = self.backend.lines_or_info_with_copy()
+        init_lp, init_l_q, *_ = self.backend.loads_info_with_copy()
+        init_gp, *_ = self.backend.generators_info_with_copy()
         init_ls = self.backend.get_line_status()
         ratio = 1.0
         new_cp = ratio * init_lp
@@ -630,9 +630,9 @@ class BaseTestLoadingBackendFunc(MakeBackend):
 
         # i check that if i divide by 2, then everything is divided by 2
         assert conv
-        init_flow, *_ = self.backend.lines_or_info()
-        init_lp, init_l_q, *_ = self.backend.loads_info()
-        init_gp, *_ = self.backend.generators_info()
+        init_flow, *_ = self.backend.lines_or_info_with_copy()
+        init_lp, init_l_q, *_ = self.backend.loads_info_with_copy()
+        init_gp, *_ = self.backend.generators_info_with_copy()
         init_ls = self.backend.get_line_status()
         ratio = 0.5
         new_cp = ratio * init_lp
@@ -646,8 +646,8 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         conv, *_  = self.backend.runpf(is_dc=True)
         assert conv, "Cannot perform a powerflow after doing nothing (dc)"
 
-        after_lp, after_lq, *_ = self.backend.loads_info()
-        after_gp, *_ = self.backend.generators_info()
+        after_lp, after_lq, *_ = self.backend.loads_info_with_copy()
+        after_gp, *_ = self.backend.generators_info_with_copy()
         after_ls = self.backend.get_line_status()
         assert self.compare_vect(new_cp, after_lp)  # check i didn't modify the loads
 
@@ -667,7 +667,6 @@ class BaseTestLoadingBackendFunc(MakeBackend):
             new_pp, after_gp
         )  # check i didn't modify the generators
         assert np.all(init_ls == after_ls)  # check i didn't disconnect any powerlines
-
         after_flow, *_ = self.backend.lines_or_info()
         assert self.compare_vect(
             ratio * init_flow, after_flow
@@ -677,7 +676,7 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         self.skip_if_needed()
         conv, *_  = self.backend.runpf(is_dc=False)
         assert conv, f"powergrid diverge after loading with error {_}"
-        prod_p_init, prod_q_init, prod_v_init = self.backend.generators_info()
+        prod_p_init, prod_q_init, prod_v_init = self.backend.generators_info_with_copy()
         ratio = 1.05
         action = self.action_env(
             {"injection": {"prod_v": ratio * prod_v_init}}
@@ -688,7 +687,7 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         conv, *_  = self.backend.runpf(is_dc=False)
         assert conv, f"Cannot perform a powerflow after modifying the powergrid with error {_}"
 
-        prod_p_after, prod_q_after, prod_v_after = self.backend.generators_info()
+        prod_p_after, prod_q_after, prod_v_after = self.backend.generators_info_with_copy()
         assert self.compare_vect(
             ratio * prod_v_init, prod_v_after
         )  # check i didn't modify the generators
@@ -698,8 +697,8 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         # retrieve some initial data to be sure only a subpart of the _grid is modified
         conv, *_  = self.backend.runpf()
         assert conv, f"powerflow diverge with , error: {_}"
-        init_lp, *_ = self.backend.loads_info()
-        init_gp, *_ = self.backend.generators_info()
+        init_lp, *_ = self.backend.loads_info_with_copy()
+        init_gp, *_ = self.backend.generators_info_with_copy()
 
         # check that maintenance vector is properly taken into account
         maintenance = np.full((self.backend.n_line,), fill_value=False, dtype=dt_bool)
@@ -716,8 +715,8 @@ class BaseTestLoadingBackendFunc(MakeBackend):
         assert conv, "Power does not converge if line {} is removed with error {}".format(19, _)
 
         # performs basic check
-        after_lp, *_ = self.backend.loads_info()
-        after_gp, *_ = self.backend.generators_info()
+        after_lp, *_ = self.backend.loads_info_with_copy()
+        after_gp, *_ = self.backend.generators_info_with_copy()
         after_ls = self.backend.get_line_status()
         assert self.compare_vect(init_lp, after_lp)  # check i didn't modify the loads
         # assert self.compare_vect(init_gp, after_gp)  # check i didn't modify the generators  # TODO here problem with steady state P=C+L
@@ -1340,12 +1339,12 @@ class BaseTestTopoAction(MakeBackend):
         self.backend.runpf()
         act = self.backend.get_action_to_set()
 
-        prod_p, prod_q, prod_v = self.backend.generators_info()
-        load_p, load_q, load_v = self.backend.loads_info()
-        p_or, *_ = self.backend.lines_or_info()
+        prod_p, prod_q, prod_v = self.backend.generators_info_with_copy()
+        load_p, load_q, load_v = self.backend.loads_info_with_copy()
+        p_or, *_ = self.backend.lines_or_info_with_copy()
 
         if self.backend.shunts_data_available:
-            _, sh_q, *_ = self.backend.shunt_info()
+            _, sh_q, *_ = self.backend.shunt_info_with_copy()
         else:
             sh_q = None
 
@@ -1357,9 +1356,9 @@ class BaseTestTopoAction(MakeBackend):
         bk_act2 += act2
         self.backend.apply_action_public(bk_act2)
         self.backend.runpf()
-        prod_p2, prod_q2, prod_v2 = self.backend.generators_info()
-        load_p2, load_q2, load_v2 = self.backend.loads_info()
-        p_or2, *_ = self.backend.lines_or_info()
+        prod_p2, prod_q2, prod_v2 = self.backend.generators_info_with_copy()
+        load_p2, load_q2, load_v2 = self.backend.loads_info_with_copy()
+        p_or2, *_ = self.backend.lines_or_info_with_copy()
         assert np.any(np.abs(prod_p2 - prod_p) >= self.tol_one)
         assert np.any(np.abs(load_p2 - load_p) >= self.tol_one)
         assert np.any(np.abs(p_or2 - p_or) >= self.tol_one)
@@ -1379,7 +1378,7 @@ class BaseTestTopoAction(MakeBackend):
         bk_act2 += act2
         self.backend.apply_action_public(bk_act2)
         self.backend.runpf()
-        p_or2, *_ = self.backend.lines_or_info()
+        p_or2, *_ = self.backend.lines_or_info_with_copy()
         assert np.abs(p_or2[l_id]) <= self.tol_one, "line has not been disconnected"
         assert np.any(np.abs(p_or2 - p_or) >= self.tol_one)
         # check i can put it back to orig state
@@ -1396,7 +1395,7 @@ class BaseTestTopoAction(MakeBackend):
         bk_act2 += act2
         self.backend.apply_action_public(bk_act2)
         self.backend.runpf()
-        p_or2, *_ = self.backend.lines_or_info()
+        p_or2, *_ = self.backend.lines_or_info_with_copy()
         assert np.any(np.abs(p_or2 - p_or) >= self.tol_one)
         # check i can put it back to orig state
         try:
@@ -1413,8 +1412,8 @@ class BaseTestTopoAction(MakeBackend):
             self.backend.apply_action_public(bk_act2)
             self.backend.runpf()
             prod_p2, prod_q2, prod_v2 = self.backend.generators_info()
-            _, sh_q2, *_ = self.backend.shunt_info()
-            p_or2, *_ = self.backend.lines_or_info()
+            _, sh_q2, *_ = self.backend.shunt_info_with_copy()
+            p_or2, *_ = self.backend.lines_or_info_with_copy()
             assert np.any(np.abs(prod_p2 - prod_p) >= self.tol_one)
             assert np.any(np.abs(p_or2 - p_or) >= self.tol_one)
             assert np.any(np.abs(sh_q2 - sh_q) >= self.tol_one)
@@ -1471,11 +1470,11 @@ class BaseTestTopoAction(MakeBackend):
         obs = env.reset()
 
         # store the initial value that should be there when i reapply the "update_from_obs"
-        prod_p, prod_q, prod_v = self.backend.generators_info()
-        load_p, load_q, load_v = self.backend.loads_info()
-        p_or, *_ = self.backend.lines_or_info()
+        prod_p, prod_q, prod_v = self.backend.generators_info_with_copy()
+        load_p, load_q, load_v = self.backend.loads_info_with_copy()
+        p_or, *_ = self.backend.lines_or_info_with_copy()
         if self.backend.shunts_data_available:
-            _, sh_q, *_ = self.backend.shunt_info()
+            _, sh_q, *_ = self.backend.shunt_info_with_copy()
         else:
             sh_q = None
 

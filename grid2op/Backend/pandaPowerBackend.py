@@ -115,6 +115,14 @@ class PandaPowerBackend(Backend):
 
     """
     shunts_data_available = True
+    _nm_gen_attr = ["prod_p", "prod_q", "prod_v", "gen_theta"]
+    _nm_load_attr = ["load_p", "load_q", "load_v", "load_theta"]
+    _nm_storage_attr = ["storage_p", "storage_q", "storage_v", "storage_theta"]
+    _nm_line_or_attr = ["p_or", "q_or", "v_or", "theta_or"]
+    _nm_line_ex_attr = ["p_ex", "q_ex", "v_ex", "theta_ex"]
+    _nm_line_attr = _nm_line_or_attr + _nm_line_ex_attr
+    _nm_dc_zero_attr = ["load_q", "prod_q", "q_or", "q_ex", "storage_q"]
+    _nm_all_obj_attr = (_nm_gen_attr + _nm_load_attr + _nm_line_attr + _nm_storage_attr + ["_topo_vect", "line_status"])
     
     def __init__(
         self,
@@ -187,7 +195,6 @@ class PandaPowerBackend(Backend):
         self._get_vector_inj = {}
         self._vars_action = BaseAction.attr_list_vect
         self._vars_action_set = BaseAction.attr_list_vect
-        self.cst_1 = dt_float(1.0)
         self._topo_vect = None
         self.slack_id = None
 
@@ -288,11 +295,11 @@ class PandaPowerBackend(Backend):
             Gives the voltage angle (in degree) to the bus at which each storage unit is connected
         """
         return (
-            self.cst_1 * self.theta_or,
-            self.cst_1 * self.theta_ex,
-            self.cst_1 * self.load_theta,
-            self.cst_1 * self.gen_theta,
-            self.cst_1 * self.storage_theta,
+            self.theta_or,
+            self.theta_ex,
+            self.load_theta,
+            self.gen_theta,
+            self.storage_theta,
         )
     
     def get_nb_active_bus(self) -> int:
@@ -453,13 +460,13 @@ class PandaPowerBackend(Backend):
 
         self.__nb_bus_before = self._grid.bus.shape[0]
         self.__nb_powerline = self._grid.line.shape[0]
-        self._init_bus_load = self.cst_1 * self._grid.load["bus"].values
-        self._init_bus_gen = self.cst_1 * self._grid.gen["bus"].values
-        self._init_bus_lor = self.cst_1 * self._grid.line["from_bus"].values
-        self._init_bus_lex = self.cst_1 * self._grid.line["to_bus"].values
+        self._init_bus_load = self._grid.load["bus"].values.copy()
+        self._init_bus_gen = self._grid.gen["bus"].values.copy()
+        self._init_bus_lor = self._grid.line["from_bus"].values.copy()
+        self._init_bus_lex = self._grid.line["to_bus"].values.copy()
 
-        t_for = self.cst_1 * self._grid.trafo["hv_bus"].values
-        t_fex = self.cst_1 * self._grid.trafo["lv_bus"].values
+        t_for = self._grid.trafo["hv_bus"].values
+        t_fex = self._grid.trafo["lv_bus"].values
         self._init_bus_lor = np.concatenate((self._init_bus_lor, t_for)).astype(dt_int)
         self._init_bus_lex = np.concatenate((self._init_bus_lex, t_fex)).astype(dt_int)
 
@@ -859,6 +866,9 @@ class PandaPowerBackend(Backend):
             self.__pp_backend_initial_grid = copy.deepcopy(
                 self._grid
             )  # will be initialized in the "assert_grid_correct"
+            
+        for attr_nm in type(self)._nm_all_obj_attr:
+            getattr(self, attr_nm).flags.writeable = False
 
     def storage_deact_for_backward_comaptibility(self) -> None:
         cls = type(self)
@@ -868,8 +878,9 @@ class PandaPowerBackend(Backend):
         self.storage_v = np.full(cls.n_storage, dtype=dt_float, fill_value=np.nan)
         self._topo_vect.flags.writeable = True
         self._topo_vect.resize(cls.dim_topo, refcheck=False)
-        self._topo_vect.flags.writeable = False
         self._get_topo_vect()
+        for attr_nm in cls._nm_all_obj_attr:
+            getattr(self, attr_nm).flags.writeable = False
 
     def _convert_id_topo(self, id_big_topo):
         """
@@ -1120,7 +1131,91 @@ class PandaPowerBackend(Backend):
                 # sometimes pandapower does not detect divergence and put Nan.
                 raise pp.powerflow.LoadflowNotConverged("Divergence due to Nan values in res_gen table (most likely due to "
                                                         "a non connected grid).")
-                            
+    
+    def _fetch_gens_info(self):      
+        for attr_nm in type(self)._nm_gen_attr:
+            getattr(self, attr_nm).flags.writeable = True
+            
+        (
+            self.prod_p[:],
+            self.prod_q[:],
+            self.prod_v[:],
+            self.gen_theta[:],
+        ) = self._gens_info()
+        
+        for attr_nm in type(self)._nm_gen_attr:
+            getattr(self, attr_nm).flags.writeable = False
+        
+    def _fetch_loads_info(self):
+        for attr_nm in type(self)._nm_load_attr:
+            getattr(self, attr_nm).flags.writeable = True
+        
+        (
+            self.load_p[:],
+            self.load_q[:],
+            self.load_v[:],
+            self.load_theta[:],
+        ) = self._loads_info()
+        for attr_nm in type(self)._nm_load_attr:
+            getattr(self, attr_nm).flags.writeable = False
+    
+    def _fetch_lines_info(self):
+        for attr_nm in type(self)._nm_line_attr:
+            getattr(self, attr_nm).flags.writeable = True
+            
+        self.p_or[:] = self._aux_get_line_info("p_from_mw", "p_hv_mw")
+        self.q_or[:] = self._aux_get_line_info("q_from_mvar", "q_hv_mvar")
+        self.v_or[:] = self._aux_get_line_info("vm_from_pu", "vm_hv_pu")
+        self.a_or[:] = self._aux_get_line_info("i_from_ka", "i_hv_ka") * 1000.
+        self.theta_or[:] = self._aux_get_line_info(
+            "va_from_degree", "va_hv_degree"
+        )
+        self.a_or[~np.isfinite(self.a_or)] = 0.0
+        self.v_or[~np.isfinite(self.v_or)] = 0.0
+
+        self.p_ex[:] = self._aux_get_line_info("p_to_mw", "p_lv_mw")
+        self.q_ex[:] = self._aux_get_line_info("q_to_mvar", "q_lv_mvar")
+        self.v_ex[:] = self._aux_get_line_info("vm_to_pu", "vm_lv_pu")
+        self.a_ex[:] = self._aux_get_line_info("i_to_ka", "i_lv_ka") * 1000.
+        self.theta_ex[:] = self._aux_get_line_info(
+            "va_to_degree", "va_lv_degree"
+        )
+        self.a_ex[~np.isfinite(self.a_ex)] = 0.0
+        self.v_ex[~np.isfinite(self.v_ex)] = 0.0
+
+        # it seems that pandapower does not take into account disconencted powerline for their voltage
+        self.v_or[~self.line_status] = 0.0
+        self.v_ex[~self.line_status] = 0.0
+        self.v_or[:] *= self.lines_or_pu_to_kv
+        self.v_ex[:] *= self.lines_ex_pu_to_kv
+        
+        # see issue https://github.com/Grid2Op/grid2op/issues/389
+        self.theta_or[~np.isfinite(self.theta_or)] = 0.0
+        self.theta_ex[~np.isfinite(self.theta_ex)] = 0.0
+        
+        for attr_nm in type(self)._nm_line_attr:
+            getattr(self, attr_nm).flags.writeable = False
+    
+    def _fetch_storages_info(self):
+        for attr_nm in type(self)._nm_storage_attr:
+            getattr(self, attr_nm).flags.writeable = True
+            
+        (
+            self.storage_p[:],
+            self.storage_q[:],
+            self.storage_v[:],
+            self.storage_theta[:],
+        ) = self._storages_info()
+        
+        deact_storage = ~np.isfinite(self.storage_v)
+        self.storage_p[deact_storage] = 0.0
+        self.storage_q[deact_storage] = 0.0
+        self.storage_v[deact_storage] = 0.0
+        self._grid.storage["in_service"].values[deact_storage] = False
+        
+        for attr_nm in type(self)._nm_storage_attr:
+            getattr(self, attr_nm).flags.writeable = False
+
     def runpf(self, is_dc : bool=False) -> Tuple[bool, Union[Exception, None]]:
         """
         INTERNAL
@@ -1147,23 +1242,14 @@ class PandaPowerBackend(Backend):
                 buses_ko = self._grid.res_bus.loc[self._grid.bus["in_service"]]["va_degree"].isnull()
                 buses_ko = buses_ko.values.nonzero()[0]
                 raise pp.powerflow.LoadflowNotConverged(f"Isolated bus, check buses {buses_ko} with `env.backend._grid.res_bus.iloc[{buses_ko}, :]`")
-                                           
-            (
-                self.prod_p[:],
-                self.prod_q[:],
-                self.prod_v[:],
-                self.gen_theta[:],
-            ) = self._gens_info()
-            (
-                self.load_p[:],
-                self.load_q[:],
-                self.load_v[:],
-                self.load_theta[:],
-            ) = self._loads_info()
+            
+            self._fetch_gens_info()
+            self._fetch_loads_info()
             
             if is_dc:
                 # fix voltages magnitude that are always "nan" for dc case
                 # self._grid.res_bus["vm_pu"] is always nan when computed in DC
+                self.load_v.flags.writeable = True
                 self.load_v[:] = self.load_pu_to_kv  # TODO
                 # need to assign the correct value when a generator is present at the same bus
                 # TODO optimize this ugly loop
@@ -1181,37 +1267,10 @@ class PandaPowerBackend(Backend):
                                 self.load_v[l_id] = self.prod_v[g_id]
                                 break
                 self.load_v[~self._grid.load["in_service"]] = 0.
+                self.load_v.flags.writeable = False
             
             # I retrieve the data once for the flows, so has to not re read multiple dataFrame
-            self.p_or[:] = self._aux_get_line_info("p_from_mw", "p_hv_mw")
-            self.q_or[:] = self._aux_get_line_info("q_from_mvar", "q_hv_mvar")
-            self.v_or[:] = self._aux_get_line_info("vm_from_pu", "vm_hv_pu")
-            self.a_or[:] = self._aux_get_line_info("i_from_ka", "i_hv_ka") * 1000.
-            self.theta_or[:] = self._aux_get_line_info(
-                "va_from_degree", "va_hv_degree"
-            )
-            self.a_or[~np.isfinite(self.a_or)] = 0.0
-            self.v_or[~np.isfinite(self.v_or)] = 0.0
-
-            self.p_ex[:] = self._aux_get_line_info("p_to_mw", "p_lv_mw")
-            self.q_ex[:] = self._aux_get_line_info("q_to_mvar", "q_lv_mvar")
-            self.v_ex[:] = self._aux_get_line_info("vm_to_pu", "vm_lv_pu")
-            self.a_ex[:] = self._aux_get_line_info("i_to_ka", "i_lv_ka") * 1000.
-            self.theta_ex[:] = self._aux_get_line_info(
-                "va_to_degree", "va_lv_degree"
-            )
-            self.a_ex[~np.isfinite(self.a_ex)] = 0.0
-            self.v_ex[~np.isfinite(self.v_ex)] = 0.0
-
-            # it seems that pandapower does not take into account disconencted powerline for their voltage
-            self.v_or[~self.line_status] = 0.0
-            self.v_ex[~self.line_status] = 0.0
-            self.v_or[:] *= self.lines_or_pu_to_kv
-            self.v_ex[:] *= self.lines_ex_pu_to_kv
-            
-            # see issue https://github.com/Grid2Op/grid2op/issues/389
-            self.theta_or[~np.isfinite(self.theta_or)] = 0.0
-            self.theta_ex[~np.isfinite(self.theta_ex)] = 0.0
+            self._fetch_lines_info()
 
             self._nb_bus_before = None
             if self._iref_slack is not None:
@@ -1220,29 +1279,22 @@ class PandaPowerBackend(Backend):
 
             # handle storage units
             # note that we have to look ourselves for disconnected storage
-            (
-                self.storage_p[:],
-                self.storage_q[:],
-                self.storage_v[:],
-                self.storage_theta[:],
-            ) = self._storages_info()
-            
-            deact_storage = ~np.isfinite(self.storage_v)
-            self.storage_p[deact_storage] = 0.0
-            self.storage_q[deact_storage] = 0.0
-            self.storage_v[deact_storage] = 0.0
-            self._grid.storage["in_service"].values[deact_storage] = False
+            self._fetch_storages_info()
             if not self._grid.converged:
                 raise pp.powerflow.LoadflowNotConverged("Divergence without specific reason (self._grid.converged is False)")
             self.div_exception = None
             
             if is_dc:
                 # pandapower apparently does not set 0 for q in DC...
+                for attr_nm in cls._nm_dc_zero_attr:
+                    getattr(self, attr_nm).flags.writeable = True
                 self.prod_q[:] = 0.
                 self.load_q[:] = 0.
                 self.storage_q[:] = 0.
                 self.q_or[:] = 0.
                 self.q_ex[:] = 0.
+                for attr_nm in cls._nm_dc_zero_attr:
+                    getattr(self, attr_nm).flags.writeable = False
             return True, None
 
         except pp.powerflow.LoadflowNotConverged as exc_:
@@ -1253,6 +1305,10 @@ class PandaPowerBackend(Backend):
             return False, BackendError(f'powerflow diverged with error :"{msg}", you can check `env.backend.div_exception` for more information')
 
     def _reset_all_nan(self) -> None:
+        cls = type(self)
+        for attr_nm in cls._nm_all_obj_attr:
+            getattr(self, attr_nm).flags.writeable = True
+            
         self.p_or[:] = np.nan
         self.q_or[:] = np.nan
         self.v_or[:] = np.nan
@@ -1283,6 +1339,9 @@ class PandaPowerBackend(Backend):
         self.line_status.flags.writeable = True
         self.line_status[:] = False
         self.line_status.flags.writeable = False
+        
+        for attr_nm in cls._nm_all_obj_attr:
+            getattr(self, attr_nm).flags.writeable = False
         
     def copy(self) -> "PandaPowerBackend":
         """
@@ -1347,7 +1406,6 @@ class PandaPowerBackend(Backend):
         res._number_true_line = self._number_true_line
         res._corresp_name_fun = copy.deepcopy(self._corresp_name_fun)
         res.dim_topo = self.dim_topo
-        res.cst_1 = self.cst_1
         res._topo_vect = copy.deepcopy(self._topo_vect)
         res.slack_id = self.slack_id
 
@@ -1516,14 +1574,13 @@ class PandaPowerBackend(Backend):
         return self._topo_vect
 
     def _gens_info(self):
-        prod_p = self.cst_1 * self._grid.res_gen["p_mw"].values.astype(dt_float)
-        prod_q = self.cst_1 * self._grid.res_gen["q_mvar"].values.astype(dt_float)
+        prod_p = self._grid.res_gen["p_mw"].values.astype(dt_float)
+        prod_q = self._grid.res_gen["q_mvar"].values.astype(dt_float)
         prod_v = (
-            self.cst_1
-            * self._grid.res_gen["vm_pu"].values.astype(dt_float)
+            self._grid.res_gen["vm_pu"].values.astype(dt_float)
             * self.prod_pu_to_kv
         )
-        prod_theta = self.cst_1 * self._grid.res_gen["va_degree"].values.astype(
+        prod_theta = self._grid.res_gen["va_degree"].values.astype(
             dt_float
         )
         if self._iref_slack is not None:
@@ -1540,8 +1597,8 @@ class PandaPowerBackend(Backend):
         return prod_p, prod_q, prod_v, prod_theta
 
     def _loads_info(self):
-        load_p = self.cst_1 * self._grid.res_load["p_mw"].values.astype(dt_float)
-        load_q = self.cst_1 * self._grid.res_load["q_mvar"].values.astype(dt_float)
+        load_p = self._grid.res_load["p_mw"].values.astype(dt_float)
+        load_q = self._grid.res_load["q_mvar"].values.astype(dt_float)
         load_v = (
             self._grid.res_bus.loc[self._grid.load["bus"].values][
                 "vm_pu"
@@ -1558,37 +1615,37 @@ class PandaPowerBackend(Backend):
 
     def generators_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return (
-            self.cst_1 * self.prod_p,
-            self.cst_1 * self.prod_q,
-            self.cst_1 * self.prod_v,
+            self.prod_p,
+            self.prod_q,
+            self.prod_v,
         )
 
     def loads_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return (
-            self.cst_1 * self.load_p,
-            self.cst_1 * self.load_q,
-            self.cst_1 * self.load_v,
+            self.load_p,
+            self.load_q,
+            self.load_v,
         )
 
     def lines_or_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return (
-            self.cst_1 * self.p_or,
-            self.cst_1 * self.q_or,
-            self.cst_1 * self.v_or,
-            self.cst_1 * self.a_or,
+            self.p_or,
+            self.q_or,
+            self.v_or,
+            self.a_or,
         )
 
     def lines_ex_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return (
-            self.cst_1 * self.p_ex,
-            self.cst_1 * self.q_ex,
-            self.cst_1 * self.v_ex,
-            self.cst_1 * self.a_ex,
+            self.p_ex,
+            self.q_ex,
+            self.v_ex,
+            self.a_ex,
         )
 
     def shunt_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        shunt_p = self.cst_1 * self._grid.res_shunt["p_mw"].values.astype(dt_float)
-        shunt_q = self.cst_1 * self._grid.res_shunt["q_mvar"].values.astype(dt_float)
+        shunt_p = self._grid.res_shunt["p_mw"].values.astype(dt_float)
+        shunt_q = self._grid.res_shunt["q_mvar"].values.astype(dt_float)
         shunt_v = (
             self._grid.res_bus["vm_pu"]
             .loc[self._grid.shunt["bus"].values]
@@ -1606,9 +1663,9 @@ class PandaPowerBackend(Backend):
 
     def storages_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return (
-            self.cst_1 * self.storage_p,
-            self.cst_1 * self.storage_q,
-            self.cst_1 * self.storage_v,
+            self.storage_p,
+            self.storage_q,
+            self.storage_v,
         )
 
     def _storages_info(self):

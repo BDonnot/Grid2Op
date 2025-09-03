@@ -9,10 +9,10 @@
 import os
 import numpy as np
 import warnings
-import grid2op
+
 from grid2op.Backend import Backend
 from grid2op.dtypes import dt_int
-from grid2op.tests.helper_path_test import HelperTests, MakeBackend, PATH_DATA
+from grid2op.tests.helper_path_test import MakeBackend, PATH_DATA
 from grid2op.Exceptions import BackendError, Grid2OpException
 from grid2op.Space import DEFAULT_ALLOW_DETACHMENT, DEFAULT_N_BUSBAR_PER_SUB
 
@@ -445,10 +445,10 @@ class AAATestBackendAPI(MakeBackend):
         backend = self.aux_make_backend()
         
         res = backend.runpf(is_dc=False)
-        tmp = backend.loads_info()
+        tmp = backend.loads_info_with_copy()
         assert len(tmp) == 3, "loads_info() should return 3 elements: load_p, load_q, load_v (see doc)"
         load_p_init, load_q_init, load_v_init = tmp 
-        init_gen_p, *_ = backend.generators_info() 
+        init_gen_p, *_ = backend.generators_info_with_copy() 
         
         # try to modify load_p
         action = type(backend)._complete_action_class()
@@ -464,8 +464,8 @@ class AAATestBackendAPI(MakeBackend):
         tmp2 = backend.loads_info()
         assert len(tmp) == 3, "loads_info() should return 3 elements: load_p, load_q, load_v (see doc)"
         load_p_after, load_q_after, load_v_after = tmp2 
-        assert not np.allclose(load_p_after, load_p_init), f"load_p does not seemed to be modified by apply_action when loads are impacted (active value): check `apply_action` for load_p"
-        assert not np.allclose(load_q_after, load_q_init), f"load_q does not seemed to be modified by apply_action when loads are impacted (reactive value): check `apply_action` for load_q"
+        assert not np.allclose(load_p_after, load_p_init), "load_p does not seemed to be modified by apply_action when loads are impacted (active value): check `apply_action` for load_p"
+        assert not np.allclose(load_q_after, load_q_init), "load_q does not seemed to be modified by apply_action when loads are impacted (reactive value): check `apply_action` for load_q"
         
         # now a basic check for "one load at a time"
         delta_mw = 1.
@@ -504,10 +504,10 @@ class AAATestBackendAPI(MakeBackend):
         self.skip_if_needed()
         backend = self.aux_make_backend()        
         res = backend.runpf(is_dc=False)
-        tmp = backend.generators_info()
+        tmp = backend.generators_info_with_copy()
         assert len(tmp) == 3, "generators_info() should return 3 elements: gen_p, gen_q, gen_v (see doc)"
         gen_p_init, gen_q_init, gen_v_init = tmp 
-        load_p_init, *_ = backend.loads_info()
+        load_p_init, *_ = backend.loads_info_with_copy()
         
         # try to modify load_p
         action = type(backend)._complete_action_class()
@@ -578,14 +578,14 @@ class AAATestBackendAPI(MakeBackend):
         cls = type(backend)
         
         res = backend.runpf(is_dc=False)
-        tmp_or = backend.lines_or_info()
+        tmp_or = backend.lines_or_info_with_copy()
         assert len(tmp_or) == 4, "lines_or_info() should return 4 elements: p, q, v, a (see doc)"
         p_or, q_or, v_or, a_or = tmp_or 
         for arr, arr_nm in zip([p_or, q_or, v_or, a_or],
                                ["p_or", "q_or", "v_or", "a_or"]):
             if arr.shape[0] != cls.n_line:
                 raise RuntimeError(f"{arr_nm} should have size {cls.n_line} (number of lines) but has size {arr.shape[0]}")
-        tmp_ex = backend.lines_ex_info()
+        tmp_ex = backend.lines_ex_info_with_copy()
         assert len(tmp_ex) == 4, "lines_ex_info() should return 4 elements: p, q, v, a (see doc)"
         p_ex, q_ex, v_ex, a_ex = tmp_ex
         for arr, arr_nm in zip([p_ex, q_ex, v_ex, a_ex],
@@ -604,12 +604,12 @@ class AAATestBackendAPI(MakeBackend):
         res_disco = backend.runpf(is_dc=False)
         #  backend._grid.tell_solver_need_reset() 
         assert res_disco[0], f"your backend diverges after disconnection of line {line_id}, which should not be the case"
-        tmp_or_disco = backend.lines_or_info()
-        tmp_ex_disco = backend.lines_ex_info()
-        assert not np.allclose(tmp_or_disco[0], p_or), f"p_or does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
-        assert not np.allclose(tmp_or_disco[1], p_or), f"q_or does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
-        assert not np.allclose(tmp_ex_disco[0], p_ex), f"p_ex does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
-        assert not np.allclose(tmp_ex_disco[1], p_ex), f"q_ex does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
+        tmp_or_disco = backend.lines_or_info_with_copy()
+        tmp_ex_disco = backend.lines_ex_info_with_copy()
+        assert not np.allclose(tmp_or_disco[0], p_or), "p_or does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
+        assert not np.allclose(tmp_or_disco[1], p_or), "q_or does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
+        assert not np.allclose(tmp_ex_disco[0], p_ex), "p_ex does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
+        assert not np.allclose(tmp_ex_disco[1], p_ex), "q_ex does not seemed to be modified by apply_action when a powerline is disconnected (active value): check `apply_action` for line connection disconnection"
         assert np.allclose(tmp_or_disco[0][line_id], 0.), f"origin flow (active) on disconnected line {line_id} is > 0."
         assert np.allclose(tmp_or_disco[1][line_id], 0.), f"origin flow (reactive) on disconnected line {line_id} is > 0."
         assert np.allclose(tmp_or_disco[2][line_id], 0.), f"origin voltage on disconnected line {line_id} is > 0."
@@ -630,10 +630,10 @@ class AAATestBackendAPI(MakeBackend):
         assert res_disco[0], f"your backend diverges after disconnection of line {line_id}, which should not be the case"
         tmp_or_reco = backend.lines_or_info()
         tmp_ex_reco = backend.lines_ex_info()
-        assert not np.allclose(tmp_or_disco[0], tmp_or_reco[0]), f"p_or does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
-        assert not np.allclose(tmp_or_disco[1], tmp_or_reco[1]), f"q_or does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
-        assert not np.allclose(tmp_ex_disco[0], tmp_ex_reco[0]), f"p_ex does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
-        assert not np.allclose(tmp_ex_disco[1], tmp_ex_reco[0]), f"q_ex does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
+        assert not np.allclose(tmp_or_disco[0], tmp_or_reco[0]), "p_or does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
+        assert not np.allclose(tmp_or_disco[1], tmp_or_reco[1]), "q_or does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
+        assert not np.allclose(tmp_ex_disco[0], tmp_ex_reco[0]), "p_ex does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
+        assert not np.allclose(tmp_ex_disco[1], tmp_ex_reco[0]), "q_ex does not seemed to be modified by apply_action when a powerline is reconnected (active value): check `apply_action` for line connection reconnection"
         assert not np.allclose(tmp_or_reco[0][line_id], 0.), f"origin flow (active) on connected line {line_id} is 0."
         assert not np.allclose(tmp_or_reco[1][line_id], 0.), f"origin flow (reactive) on connected line {line_id} is 0."
         assert not np.allclose(tmp_or_reco[2][line_id], 0.), f"origin voltage on connected line {line_id} is > 0."
@@ -700,7 +700,7 @@ class AAATestBackendAPI(MakeBackend):
             assert np.allclose(q_bus, 0., atol=3 * self.tol_one), "there are some discrepency in the backend after a powerflow (no modif): Kirchhoff laws are not met for q (creation or suppression of reactive). Check the handling of the slack bus(se) maybe ?"
             assert np.allclose(diff_v_bus, 0., atol=3 * self.tol_one), "there are some discrepency in the backend after a powerflow (no modif): some nodes have two different voltages. Check the accessor for voltage in all the `***_info()` (*eg* `loads_info()`)"
             
-        p_or, q_or, v_or, a_or = backend.lines_or_info()
+        p_or, q_or, v_or, a_or = backend.lines_or_info_with_copy()
         
         sub_id = 0
         # everything on busbar 2 at sub 0 (should have no impact)

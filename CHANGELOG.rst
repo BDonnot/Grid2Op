@@ -107,7 +107,16 @@ Native multi agents support:
   "BaseObservation" class for a custom class (*eg* you should add 
   `access_env_dict=None` in the `__init__` and then pass 
   `access_env_dict=access_env_dict` to the call to `super().__init__`) 
+- [BREAKING] It is now explicit that the `backend.get_xxx_info()` method
+  should not return any copies. If needed, copies of these attributes
+  should be made explicitely with a call
+  to `backend.get_xxx_info_with_copy()`.
 - [FIXED] some issues with gym classes
+- [ADDED] lazy observation attributes concept (does not read unused 
+  attributes)
+- [ADDED] the `xxx_with_copy` method of the `Backend` (*eg* 
+  `backend.loads_info_with_copy()`) when explicitely needed 
+  copy of the returned array (by default no copies are made).
 - [IMPROVED] the serialization of class definition 
   when using "automatic_classes" or "experimental_read_from_local_dir"
 - [IMPROVED] when using gym MultiDiscrete as an action space,
@@ -117,6 +126,7 @@ Native multi agents support:
   dimension, because you cannot act on storage unit.)
 - [IMPROVED] classes for action and observation classes are now easier to 
   initialize (added the `finalize_class_definition` classmethod)
+- [IMPROVED] speed of the PandapowerBackend (avoid making unnecessary copies)
 
 [1.12.1] - 2025-08-28
 ----------------------

@@ -667,7 +667,6 @@ class Backend(GridObjects, ABC):
 
         TODO detailed topo: change of behaviour !
         
-            
         .. warning:: /!\\\\ Internal, do not use unless you know what you are doing /!\\\\
 
             Prefer using :attr:`grid2op.Observation.BaseObservation.topo_vect`
@@ -717,6 +716,12 @@ class Backend(GridObjects, ABC):
         """
         return None
 
+    def get_topo_vect_with_copy(self) -> Optional[np.ndarray]:
+        tmp = self.get_topo_vect()
+        if tmp is None:
+            return None
+        return tmp.copy()
+    
     def get_switches_position(self) -> Optional[np.ndarray]:
         """INTERNAL
 
@@ -731,6 +736,12 @@ class Backend(GridObjects, ABC):
         """
         return None
     
+    def get_switches_position_with_copy(self) -> Optional[np.ndarray]:
+        tmp = self.get_switches_position_with_copy()
+        if tmp is None:
+            return None
+        return tmp.copy()
+        
     @abstractmethod
     def generators_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -763,6 +774,9 @@ class Backend(GridObjects, ABC):
         """
         pass
 
+    def generators_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.generators_info())
+    
     @abstractmethod
     def loads_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -795,6 +809,9 @@ class Backend(GridObjects, ABC):
         """
         pass
 
+    def loads_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.loads_info())
+    
     @abstractmethod
     def lines_or_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -828,6 +845,9 @@ class Backend(GridObjects, ABC):
         """
         pass
 
+    def lines_or_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.lines_or_info())
+    
     @abstractmethod
     def lines_ex_info(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -861,6 +881,9 @@ class Backend(GridObjects, ABC):
         """
         pass
 
+    def lines_ex_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.lines_ex_info())
+    
     def close(self) -> None:
         """
         INTERNAL
@@ -1109,9 +1132,13 @@ class Backend(GridObjects, ABC):
         :return: an array with the line flows of each powerline
         :rtype: np.array, dtype:float
         """
-        p_or, q_or, v_or, a_or = self.lines_or_info()
+        *_, a_or = self.lines_or_info()
         return a_or
 
+    def get_line_flow_wtih_copy(self) -> np.ndarray:
+        *_, a_or = self.lines_or_info_with_copy()
+        return a_or
+    
     def set_thermal_limit(self, limits : Union[np.ndarray, Dict[str, float]]) -> None:
         """
         INTERNAL
@@ -1328,8 +1355,12 @@ class Backend(GridObjects, ABC):
         shunt_bus: ``numpy.ndarray``
             For each shunt, the bus id to which it is connected.
         """
-        return [], [], [], []
+        empty_ = np.array([])
+        return empty_, empty_, empty_, empty_
 
+    def shunt_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.shunt_info())
+        
     def get_theta(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         .. note::
@@ -1362,6 +1393,9 @@ class Backend(GridObjects, ABC):
             "Your backend does not support the retrieval of the voltage angle theta."
         )
 
+    def get_theta_with_copy(self):
+        return tuple(el.copy() for el in self.get_theta())
+        
     def sub_from_bus_id(self, bus_id : int) -> int:
         """
         INTERNAL
@@ -1642,13 +1676,16 @@ class Backend(GridObjects, ABC):
         storage_v ``numpy.ndarray``
             The voltage magnitude of the bus to which each load is connected (in kV)
         """
-        if self.n_storage > 0:
+        if type(self).n_storage > 0:
             raise BackendError(
                 "storages_info method is not implemented yet there is batteries on the grid."
             )
         empty_ = np.array([])
         return empty_, empty_, empty_
 
+    def storages_info_with_copy(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return tuple(el.copy() for el in self.storages_info())
+    
     def storage_deact_for_backward_comaptibility(self) -> None:
         """
         INTERNAL
@@ -2297,7 +2334,7 @@ class Backend(GridObjects, ABC):
         """
         line_status = self._aux_get_line_status_to_set(self.get_line_status())
         topo_vect = self.get_topo_vect()
-        if np.all(topo_vect == -1):
+        if (topo_vect == -1).all():
             raise RuntimeError(
                 "The get_action_to_set should not be used after a divergence of the powerflow"
             )
@@ -2311,7 +2348,7 @@ class Backend(GridObjects, ABC):
         set_me = self._complete_action_class()  # pylint: disable=not-callable
         dict_ = {
             "set_line_status": line_status,
-            "set_bus": 1 * topo_vect,
+            "set_bus": topo_vect,
             "injection": {
                 "prod_p": prod_p,
                 "prod_v": prod_v,
@@ -2321,7 +2358,7 @@ class Backend(GridObjects, ABC):
         }
 
         if type(self).shunts_data_available:
-            p_s, q_s, sh_v, bus_s = self.shunt_info()
+            p_s, q_s, sh_v, bus_s = self.shunt_info_with_copy()
             dict_["shunt"] = {"shunt_bus": bus_s}
             if (bus_s >= 1).sum():
                 sh_conn = bus_s > 0
@@ -2334,7 +2371,7 @@ class Backend(GridObjects, ABC):
 
         if self.n_storage > 0:
             sto_p, *_ = self.storages_info()
-            dict_["set_storage"] = 1.0 * sto_p
+            dict_["set_storage"] = sto_p
 
         set_me.update(dict_)
         return set_me
