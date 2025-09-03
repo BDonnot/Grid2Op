@@ -1021,16 +1021,16 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         new_obj._loads_detached = copy.deepcopy(self._loads_detached)
         new_obj._gens_detached = copy.deepcopy(self._gens_detached)
         new_obj._storages_detached = copy.deepcopy(self._storages_detached)
-        new_obj._prev_load_p = 1. * self._prev_load_p
-        new_obj._load_p_detached = 1. * self._load_p_detached
-        new_obj._prev_load_q = 1. * self._prev_load_q
-        new_obj._load_q_detached = 1. * self._load_q_detached
-        new_obj._prev_gen_p = 1. * self._prev_gen_p
-        new_obj._gen_p_detached = 1. * self._gen_p_detached
-        new_obj._storage_p_detached = 1. * self._storage_p_detached
+        new_obj._prev_load_p = self._prev_load_p.copy()
+        new_obj._load_p_detached = self._load_p_detached.copy()
+        new_obj._prev_load_q = self._prev_load_q.copy()
+        new_obj._load_q_detached = self._load_q_detached.copy()
+        new_obj._prev_gen_p = self._prev_gen_p.copy()
+        new_obj._gen_p_detached = self._gen_p_detached.copy()
+        new_obj._storage_p_detached = self._storage_p_detached.copy()
         
         # slack (1.11.0)
-        new_obj._delta_gen_p = 1. * self._delta_gen_p
+        new_obj._delta_gen_p = self._delta_gen_p.copy()
         
         # previous connected state
         new_obj._previous_conn_state = copy.deepcopy(self._previous_conn_state)
@@ -2113,7 +2113,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         instead
         """
         # get the modification of generator active setpoint from the action
-        new_p = 1.0 * self._gen_activeprod_t
+        new_p = self._gen_activeprod_t.copy()
         self._aux_retrieve_modif_act(new_p, action, "prod_p")
             
         # modification of the environment always override the modification of the agents (if any)
@@ -2329,7 +2329,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         # see https://stackoverflow.com/questions/11155721/positive-directional-derivative-for-linesearch
         scale_x = max(np.max(np.abs(self._actual_dispatch)), 1.0)
         scale_x = this_dt_float(scale_x)
-        target_vals_me_optim = 1.0 * (target_vals_me / scale_x)
+        target_vals_me_optim = (target_vals_me / scale_x)
         target_vals_me_optim = target_vals_me_optim.astype(this_dt_float)
 
         # see https://stackoverflow.com/questions/11155721/positive-directional-derivative-for-linesearch
@@ -2433,7 +2433,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             return coeffs_quads_const
 
         def jac(actual_dispatchable):
-            res_jac = 1.0 * tmp_zeros
+            res_jac = tmp_zeros.copy()
             res_jac[0, already_modified_gen_me] = (
                 2.0
                 * weights[already_modified_gen_me]
@@ -2790,7 +2790,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
                 "This environment is not initialized. It has no thermal limits. "
                 "Have you called `env.reset()` after last game over ?"
             )
-        return 1.0 * self._thermal_limit_a
+        return self._thermal_limit_a.copy()
 
     def _withdraw_storage_losses(self):
         """
@@ -2953,11 +2953,11 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         if "prod_p" in self._env_modification._dict_inj:
             self._env_modification._dict_inj["prod_p"][:] = new_p
         else:
-            self._env_modification._dict_inj["prod_p"] = 1.0 * new_p
+            self._env_modification._dict_inj["prod_p"] = new_p.copy()
             self._env_modification._modif_inj = True
 
     def _aux_update_curtailment_act(self, action):
-        curtailment_act = 1.0 * action._curtail
+        curtailment_act = action._curtail.copy()
         ind_curtailed_in_act = (curtailment_act != -1.0) & self.gen_renewable
         self._limit_curtailment_prev[:] = self._limit_curtailment
         self._limit_curtailment[ind_curtailed_in_act] = curtailment_act[
@@ -3014,7 +3014,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             # "strong" curtailment but afterwards you ask to set everything to 1. (so no curtailment)
             # I cannot reuse the previous case (too_much > self._tol_poly) because the
             # curtailment is already computed there...
-            new_p_with_previous_curtailment = 1.0 * new_p_th
+            new_p_with_previous_curtailment = new_p_th.copy()
             self._aux_compute_new_p_curtailment(
                 new_p_with_previous_curtailment, self._limit_curtailment_prev
             )
@@ -3027,7 +3027,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             new_p[self.gen_renewable] += curtailed[self.gen_renewable]
 
     def _aux_readjust_storage_after_limiting(self, total_storage):
-        new_act_storage = 1.0 * self._storage_power
+        new_act_storage = self._storage_power.copy()
         sum_this_step = new_act_storage.sum()
         if abs(total_storage) < abs(sum_this_step):
             # i can modify the current action
@@ -3036,7 +3036,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
             # i need to retrieve what I did in a previous action
             # because the current action is not enough (the previous actions
             # cause a problem right now)
-            new_act_storage = 1.0 * self._storage_power_prev
+            new_act_storage = self._storage_power_prev.copy()
             sum_this_step = new_act_storage.sum()
             if abs(sum_this_step) > 1e-1:
                 modif_storage = new_act_storage * total_storage / sum_this_step
@@ -3798,7 +3798,7 @@ class BaseEnv(GridObjects, RandomObject, ABC):
                 False  # because it absorbs all redispatching actions
             )
             new_p = self._get_new_prod_setpoint(action)
-            new_p_th = 1.0 * new_p
+            new_p_th = new_p.copy()
             self._feed_data_for_detachment(new_p_th)  # should be called before _axu_apply_detachment
             
             # storage unit
@@ -4811,8 +4811,8 @@ class BaseEnv(GridObjects, RandomObject, ABC):
         )
 
         # update the maintenance
-        tnm_orig = 1 * self._time_next_maintenance
-        dnm_orig = 1 * self._duration_next_maintenance
+        tnm_orig = self._time_next_maintenance.copy()
+        dnm_orig = self._duration_next_maintenance.copy()
         
         has_maint = self._time_next_maintenance != -1
         reconnected = np.full(cls.n_line, fill_value=False)

@@ -3241,7 +3241,7 @@ class GridObjects:
         new_grid_objects_types = new_grid_objects_types[
             new_grid_objects_types[:, cls.STORAGE_COL] == -1, :
         ]
-        cls.grid_objects_types = 1 * new_grid_objects_types
+        cls.grid_objects_types = new_grid_objects_types.copy()
         
     @classmethod
     def _aux_process_old_compat(cls):
@@ -4040,7 +4040,7 @@ class GridObjects:
         res["n_load"] = cls.n_load
         res["n_line"] = cls.n_line
         res["n_sub"] = cls.n_sub
-        res["dim_topo"] = 1 * cls.dim_topo
+        res["dim_topo"] = cls.dim_topo
         # storage
         res["n_storage"] = cls.n_storage
         # shunt (not in topo vect but might be usefull)
@@ -4582,7 +4582,7 @@ class GridObjects:
             
             They assume that the input data are consistent with the grid.
         """
-        global_bus = (1 * local_bus).astype(dt_int)  # make a copy
+        global_bus = local_bus.copy().astype(dt_int)  # make a copy
         global_bus[local_bus < 0] = -1
         for i in range(cls.n_busbar_per_sub):
             on_bus_i = local_bus == i + 1
@@ -4646,7 +4646,7 @@ class GridObjects:
             
             They assume that the input data are consistent with the grid.
         """
-        res = (1 * global_bus).astype(dt_int)  # make a copy
+        res = global_bus.copy().astype(dt_int)  # make a copy
         for i in range(cls.n_busbar_per_sub):
             res[(i * cls.n_sub <= global_bus) & (global_bus < (i+1) * cls.n_sub)] = i + 1
         res[global_bus == -1] = -1

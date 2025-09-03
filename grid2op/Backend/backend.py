@@ -1173,7 +1173,7 @@ class Backend(GridObjects, ABC):
         """
         if isinstance(limits, np.ndarray):
             if limits.shape[0] == self.n_line:
-                self.thermal_limit_a = 1.0 * limits.astype(dt_float)
+                self.thermal_limit_a = limits.copy().astype(dt_float)
         elif isinstance(limits, dict):
             for el in limits.keys():
                 if el not in self.name_line:
@@ -1606,7 +1606,7 @@ class Backend(GridObjects, ABC):
             return self._disconnected_during_cf, infos, conv_
 
         # the environment disconnect some powerlines
-        protection_counter = 1 * env._protection_counter
+        protection_counter = env._protection_counter.copy()
         counter_increased = np.zeros_like(protection_counter, dtype=dt_bool)
         iter_num = 0
         while True:

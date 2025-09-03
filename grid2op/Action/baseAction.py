@@ -1865,11 +1865,12 @@ class BaseAction(GridObjects):
 
         # TODO detailed topo : implement it !
         # set_line_status = 1 * self._set_line_status  # needed ?
+        
         # switch_line_status = copy.deepcopy(self._switch_line_status)  # needed ?
         # topology changed
-        set_topo_vect = 1 * self._set_topo_vect
-        change_bus_vect = copy.deepcopy(self._change_bus_vect)
-        shunt_bus = copy.deepcopy(self._shunt_bus)
+        set_topo_vect = self._set_topo_vect.copy()
+        change_bus_vect = self._change_bus_vect.copy()
+        shunt_bus = self._shunt_bus.copy()
         dtd = type(self).detailed_topo_desc
 
         if dtd is None:
