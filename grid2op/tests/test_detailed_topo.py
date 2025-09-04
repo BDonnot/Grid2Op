@@ -811,6 +811,9 @@ class TestActAndBkAct(unittest.TestCase):
                                 True, False,  True,  True, False])
         assert (switch_pos == tgt_switch).all()
         
+        assert (~bk_act.switch_automatic).all()
+        assert (~bk_act.sub_topo_from_switch).all()
+        assert (~bk_act.el_bus_from_switch).all()
         # env does that again
         bk_act.reset()
     
@@ -829,8 +832,8 @@ class TestActAndBkAct(unittest.TestCase):
         switch_pos = bk_act.get_all_switches()
         assert (switch_pos == tgt_switch).all(), f"check switches {(switch_pos != tgt_switch).nonzero()[0]}"
         
-        # env does that again
-        bk_act.reset()
+        # remember env does call "bk_act.reset()" before reusing it !
+        return bk_act
         
     def test_switch_bbs_action(self):    
         """do an action of closing switches between busbars
@@ -865,8 +868,14 @@ class TestActAndBkAct(unittest.TestCase):
                                 True, False,  True,  True, False,  True,  True, False,  True,
                                 True, False,  True,  True, False,  True,  True, False,  True,
                                 True, False,  True,  True, False])
-        self._aux_test_bk_act(act, tgt_switch)
-        
+        bk_act = self._aux_test_bk_act(act, tgt_switch)
+        # test proper flag of the origin of the action
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert bk_act.sub_topo_from_switch[0]
+        assert (~bk_act.sub_topo_from_switch[1:]).all()
+        assert bk_act.el_bus_from_switch[act._topo_vect_to_sub == 0].all()
+        assert (~bk_act.el_bus_from_switch[act._topo_vect_to_sub != 0]).all()
+                
         # agent does that
         act : BaseAction = self.env.action_space({"set_switch": [(0, 1), (15, -1)]})
         tgt_switch = np.array([True, False, False, False, False, False, False, False, False,
@@ -892,6 +901,13 @@ class TestActAndBkAct(unittest.TestCase):
                                 True, False,  True,  True, False,  True,  True, False,  True,
                                 True, False,  True,  True, False])
         self._aux_test_bk_act(act, tgt_switch)
+        # test proper flag of the origin of the action
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 1]).all()
+        assert bk_act.sub_topo_from_switch[:2].all()  # modifies first 2 substations
+        assert (~bk_act.sub_topo_from_switch[2:]).all()
+        assert bk_act.el_bus_from_switch[(act._topo_vect_to_sub == 0) | (act._topo_vect_to_sub == 1)].all()
+        assert (~bk_act.el_bus_from_switch[~((act._topo_vect_to_sub == 0) | (act._topo_vect_to_sub == 1))]).all()
         
         # agent does that
         act : BaseAction = self.env.action_space({"set_switch": [(0, 1), (15, -1), (7, 1), (8, 1)]})
@@ -917,7 +933,20 @@ class TestActAndBkAct(unittest.TestCase):
                                True, False,  True,  True, False,  True,  True, False,  True,
                                True, False,  True,  True, False,  True,  True, False,  True,
                                True, False,  True,  True, False])
-        self._aux_test_bk_act(act, tgt_switch)
+        bk_act = self._aux_test_bk_act(act, tgt_switch)
+        # test proper flag of the origin of the action
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 1]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 7]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 8]).all()
+        assert bk_act.sub_topo_from_switch[[0, 1, 7, 8]].all()  # modifies sub 0, 1, 7, 8
+        assert (~bk_act.sub_topo_from_switch[[el for el in range(act.n_sub) if el not in [0, 1, 7, 8]]]).all()
+        mask_sub = ((act._topo_vect_to_sub == 0) | 
+                    (act._topo_vect_to_sub == 1) | 
+                    (act._topo_vect_to_sub == 7) | 
+                    (act._topo_vect_to_sub == 8))
+        assert bk_act.el_bus_from_switch[mask_sub].all()
+        assert (~bk_act.el_bus_from_switch[~mask_sub]).all()
         
     def test_switch_bbs_and_topo_act(self):    
         """do an action of closing switches between busbars
@@ -951,7 +980,15 @@ class TestActAndBkAct(unittest.TestCase):
                                 True, False,  True,  True, False,  True,  True, False,  True,
                                 True, False,  True,  True, False,  True,  True, False,  True,
                                 True, False,  True,  True, False])
-        self._aux_test_bk_act(act, tgt_switch)
+        bk_act = self._aux_test_bk_act(act, tgt_switch)
+        # test proper flag of the origin of the action
+        assert (bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 1]).all()
+        assert bk_act.sub_topo_from_switch[[1]].all() 
+        assert ~bk_act.sub_topo_from_switch[[0]].all() 
+        mask_sub = ((act._topo_vect_to_sub == 1) )
+        assert (bk_act.el_bus_from_switch[mask_sub]).all()
+        assert (~bk_act.el_bus_from_switch[~mask_sub]).all()
         
         # agent does that
         act : BaseAction = self.env.action_space({"set_switch": [(1, 1)]})  # switch on sub 1
@@ -981,6 +1018,14 @@ class TestActAndBkAct(unittest.TestCase):
         tgt_switch[66] = False
         tgt_switch[67] = True
         self._aux_test_bk_act(act, tgt_switch)
+        # test proper flag of the origin of the action
+        assert (bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 1]).all()
+        assert bk_act.sub_topo_from_switch[[1]].all() 
+        assert ~bk_act.sub_topo_from_switch[[0]].all() 
+        mask_sub = ((act._topo_vect_to_sub == 1) )
+        assert (bk_act.el_bus_from_switch[mask_sub]).all()
+        assert (~bk_act.el_bus_from_switch[~mask_sub]).all()
         
         # agent does that
         act : BaseAction = self.env.action_space({"set_switch": [(1, 1)]})  # switch on sub 1
@@ -1013,6 +1058,16 @@ class TestActAndBkAct(unittest.TestCase):
         tgt_switch[133] = True
         self._aux_test_bk_act(act, tgt_switch)
         
+        # test proper flag of the origin of the action
+        assert (bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 0]).all()
+        assert (bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 2]).all()
+        assert (~bk_act.switch_automatic[act.detailed_topo_desc.switches[:,0] == 1]).all()
+        assert bk_act.sub_topo_from_switch[[1]].all() 
+        assert ~bk_act.sub_topo_from_switch[[0, 2]].all() 
+        mask_sub = ((act._topo_vect_to_sub == 1) )
+        assert (bk_act.el_bus_from_switch[mask_sub]).all()
+        assert (~bk_act.el_bus_from_switch[~mask_sub]).all()
+        
     # TODO test with shunts
     # TODO test with line status !
     
@@ -1021,7 +1076,6 @@ class TestActAndBkAct(unittest.TestCase):
 # TODO detailed topo test with different n_busbar_per_sub
 # TODO detailed topo test action
 # TODO detailed topo test observation
-# TODO detailed topo test agent that do both actions on switches and with set_bus / change_bus
 # TODO detailed topo test agent that act on switches but with an opponent that disconnect lines
  
 if __name__ == "__main__":

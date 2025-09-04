@@ -2123,7 +2123,7 @@ class BaseAction(GridObjects):
             self._subs_impacted is not None):
             # cache is set and I ask to read it
             # no need to recompute this
-            return self._lines_impacted.copy(), self._subs_impacted.copy()
+            return self._lines_impacted, self._subs_impacted
         
         cls = type(self)
         if self._dont_affect_topology():
@@ -2167,6 +2167,10 @@ class BaseAction(GridObjects):
             # store the results in cache if asked too
             self._lines_impacted = _lines_impacted
             self._subs_impacted = _subs_impacted
+            
+            # prevent accidental modification
+            for arr in [self._lines_impacted, self._subs_impacted]:
+                arr.flag.writeable = False
             
         return _lines_impacted, _subs_impacted
 

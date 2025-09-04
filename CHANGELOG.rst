@@ -131,6 +131,7 @@ Native multi agents support:
 - [IMPROVED] speed of the PandapowerBackend (avoid making unnecessary copies)
 - [IMPROVED] overall class `PlayableAction` in various way (faster to create, 
   easier to override etc.)
+- [IMPROVED] avoid making copies during the call of `get_topological_impact()`
 
 [1.12.1] - 2025-08-28
 ----------------------

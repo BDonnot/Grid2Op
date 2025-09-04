@@ -19,7 +19,7 @@ except ImportError:
 
 from grid2op.Action.baseAction import BaseAction
 from grid2op.dtypes import dt_int, dt_bool, dt_float
-from grid2op.Space import GridObjects
+from grid2op.Space import GridObjects, DetailedTopoDescription
 from grid2op.Exceptions import Grid2OpException, AmbiguousAction
 
 ERR_MSG_SWITCH = ("Cannot retrieve switches configuration if the grid does not have "
@@ -548,7 +548,22 @@ class _BackendAction(GridObjects):
                 self.current_topo.values,
                 self.current_shunt_bus.values
             )[0]
+            
             # TODO detailed topo: shunt_bus and last_shunt_bus !
+            
+            #: has the switches been set with an automatic call (*eg* if the agent modified `set_bus`
+            #: or `change_bus`)
+            self.switch_automatic = np.zeros(cls.detailed_topo_desc.switches.shape[0], dtype=dt_bool)
+            
+            #: has the topology (for each substation) been modified directly
+            #: by the agent (*eg* with a call to `set_bus` or `change_bus`)
+            #: or computed from a switch position.
+            self.sub_topo_from_switch = np.zeros(cls.n_sub, dtype=dt_bool)
+            
+            #: as the object bus been set by the switch (True)
+            #: or directly by the agent (False) *eg* by a call
+            #: to `set_bus` or `change_bus`.
+            self.el_bus_from_switch = np.zeros(cls.dim_topo, dtype=dt_bool)
             
 
     def __deepcopy__(self, memodict={}) -> Self:
@@ -586,10 +601,6 @@ class _BackendAction(GridObjects):
         res._lines_or_bus = copy.deepcopy(self._lines_or_bus)
         res._lines_ex_bus = copy.deepcopy(self._lines_ex_bus)
         res._storage_bus = copy.deepcopy(self._storage_bus)
-
-        if cls.detailed_topo_desc is not None:
-            res.last_switch_registered = copy.deepcopy(self.last_switch_registered)
-            res.current_switch = copy.deepcopy(self.current_switch)
         
         res._is_cached = self._is_cached
         res._injections_cached = self._injections_cached
@@ -597,6 +608,13 @@ class _BackendAction(GridObjects):
         res._shunts_cached = self._shunts_cached
         
         res._needs_active_bus = self._needs_active_bus
+
+        if cls.detailed_topo_desc is not None:
+            res.last_switch_registered = copy.deepcopy(self.last_switch_registered)
+            res.current_switch = copy.deepcopy(self.current_switch)
+            res.switch_automatic = copy.deepcopy(self.switch_automatic)
+            res.sub_topo_from_switch = copy.deepcopy(self.sub_topo_from_switch)
+            res.el_bus_from_switch = copy.deepcopy(self.el_bus_from_switch)
         
         return res
 
@@ -779,7 +797,7 @@ class _BackendAction(GridObjects):
     
     def _aux_shunt_bus_in_act(self, other: BaseAction):
         if type(self).shunts_data_available:
-            return (other.shunt_bus != 0).any()
+            return (other._shunt_bus != 0).any()
         return False
     
     def _aux_iadd_reconcile_disco_reco(self):
@@ -886,6 +904,7 @@ class _BackendAction(GridObjects):
         if cls.detailed_topo_desc is None:
             raise AmbiguousAction("Something modified the switches while "
                                   "no switch information is provided.")
+        dtd = cls.detailed_topo_desc
         orig_switch =  self.current_switch.copy()  # TODO detailed topo debug
         subid_switch = other.get_sub_ids_switch()
         if other._modif_change_switch:
@@ -904,17 +923,22 @@ class _BackendAction(GridObjects):
         # connected to the impacted substations
         mask_switch = switch_topo_vect != 0
         set_topo_vect[mask_switch] = switch_topo_vect[mask_switch]
+        
+        self.switch_automatic[subid_switch[dtd.switches[:, dtd.SUB_COL]]] = False
+        self.sub_topo_from_switch[subid_switch] = True
+        self.el_bus_from_switch[switch_topo_vect != 0] = True
         self._is_cached = False
         return True
         
     def _aux_iadd_reconcile_bus_and_switch(self, 
-                                           other,
+                                           other: BaseAction,
                                            shunt_bus_modif,
-                                           dtd):
+                                           dtd: DetailedTopoDescription):
         cls = type(self)
         # here I use the fact that the environment has cached the topological impact
         # so I get the correct one !
         lines_impacted, subs_impacted_bus = other.get_topological_impact(_read_from_cache=True)
+        subs_impacted_bus = subs_impacted_bus.copy()
         subs_impacted_switch = other.get_sub_ids_switch()
         
         # it is ambiguous to modify a substation by
@@ -924,7 +948,6 @@ class _BackendAction(GridObjects):
         if shunt_bus_modif:
             subs_impacted_bus[cls.shunt_to_subid[other._shunt_bus >= 1]] = True
             shunt_bus = other._shunt_bus.copy()
-        subs_changed = subs_impacted_bus  # maks of the substation affected by BUS modification (not switch)
 
         # try to change the object when simple disconnection
         # (faster and change only a few switches)
@@ -943,9 +966,14 @@ class _BackendAction(GridObjects):
         # handle more difficult topological changes 
         # (slower and changes all the switches of the substation)
         tmp_bus, mask_bus = dtd.compute_switches_position(self.current_topo.values,
-                                                            shunt_bus,
-                                                            subs_changed)
+                                                          shunt_bus,
+                                                          subs_impacted_bus)
         self.current_switch[mask_bus] = tmp_bus[mask_bus]
+        
+        self.switch_automatic[subs_impacted_bus[dtd.switches[:, dtd.SUB_COL]]] = True
+        self.sub_topo_from_switch[subs_impacted_bus] = False
+        self.el_bus_from_switch[subs_impacted_bus[cls._topo_vect_to_sub]] = False
+        
         self._is_cached = False
         # TODO detailed topo : tag the origin of the swtich state (and topological state to
         # forward it in the observation)

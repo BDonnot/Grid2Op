@@ -830,8 +830,16 @@ class BaseObservation(GridObjects):
         # 1.12.2
         self._private_gen_uptime = None
         self._private_gen_downtime = None
+        self.gen_uptime = np.empty(shape=cls.n_gen, dtype=dt_int)
+        self.gen_downtime = np.empty(shape=cls.n_gen, dtype=dt_int)
+        
+        if cls.detailed_topo_desc is not None:
+            self.switches_state = np.empty(shape=cls.detailed_topo_desc.switches.shape[0], dtype=dt_bool)
+            self.switch_state_from_agent = np.empty(shape=cls.detailed_topo_desc.switches.shape[0], dtype=dt_bool)
+            self.sub_topo_from_agent = np.empty(shape=cls.n_sub, dtype=dt_bool)
+            self.topo_bus_from_agent = np.empty(shape=cls.dim_topo, dtype=dt_bool)
         self._private_switches_state = None
-    
+        
     @property
     def gen_uptime_lazy(self) -> "np.ndarray[dt_int]":
         if self.__access_env_dict is None:
