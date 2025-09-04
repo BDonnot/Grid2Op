@@ -9,5 +9,5 @@
 from grid2op.Space import AddDetailedTopoIEEE
 from grid2op.Backend.pandaPowerBackend import PandaPowerBackend  # or any other backend (*eg* lightsim2grid)
 
-class PandaPowerBackendWithDetailedTopo(AddDetailedTopoIEEE, PandaPowerBackend):
+class PandaPowerBackendWithDetailedTopoIEEE(AddDetailedTopoIEEE, PandaPowerBackend):
     pass

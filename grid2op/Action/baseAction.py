@@ -462,12 +462,12 @@ class BaseAction(GridObjects):
         # allow to use any type of actions
         from grid2op.Action import BaseAction
         # add "default" detailed topology to ieee grid
-        from grid2op.Backend import PandaPowerBackendWithDetailedTopo
+        from grid2op.Backend import PandaPowerBackendWithDetailedTopoIEEE
           
         env_name = "educ_case14_storage"  # or any other name
         env = grid2op.make(env_name,
                            test=True,
-                           backend=PandaPowerBackendWithDetailedTopo(),
+                           backend=PandaPowerBackendWithDetailedTopoIEEE(),
                            action_class=BaseAction)
         
         act = env.action_space({"set_switch": [(switch_id, value), (switch_id, value), ...]})
@@ -484,12 +484,12 @@ class BaseAction(GridObjects):
         # allow to use any type of actions
         from grid2op.Action import BaseAction
         # add "default" detailed topology to ieee grid
-        from grid2op.Backend import PandaPowerBackendWithDetailedTopo
+        from grid2op.Backend import PandaPowerBackendWithDetailedTopoIEEE
         
         env_name = "educ_case14_storage"  # or any other name
         env = grid2op.make(env_name,
                            test=True,
-                           backend=PandaPowerBackendWithDetailedTopo(),
+                           backend=PandaPowerBackendWithDetailedTopoIEEE(),
                            action_class=BaseAction)
         
         act = env.action_space({"change_switch": [switch_0_id, switch_1_id, ...]})
@@ -8302,20 +8302,124 @@ class BaseAction(GridObjects):
                 tmp._modif_curtailment = True   
                 tmp._curtail[g_id] = self._private_curtail[g_id]
                 res["curtail"].append(tmp)
+    
+    def _aux_daua_detachment(self,
+                            cls: Type[Self],
+                            group_detach: bool,
+                            res: Dict,
+                            attr_nm: str):
+        """
+        Equivalent of
+        
+        .. code-block:: python
+
+            if self._modif_detach_gen:
+                if group_detach:
+                    tmp = cls()
+                    tmp._modif_detach_gen = True
+                    tmp._detach_gen[:] = self._private_detach_gen
+                    res["detach_gen"] = [tmp]
+                else:
+                    gen_changed = self._private_detach_gen.nonzero()[0]
+                    res["detach_gen"] = []
+                    for g_id in gen_changed:
+                        tmp = cls()
+                        tmp._modif_detach_gen = True   
+                        tmp._detach_gen[g_id] = self._private_detach_gen[g_id]
+                        res["detach_gen"].append(tmp)
+                        
+        But also applicable to load and storage (so playing with getattr, setattr etc.)
+        """
+        modif_flag_str = f"_modif_detach_{attr_nm}"
+        modif_flag = getattr(self, modif_flag_str)
+        attr_prop_str = f"_detach_{attr_nm}"
+        priv_attr_prop_str = f"_private_detach_{attr_nm}"
+        key_str = f"detach_{attr_nm}"
+        if not modif_flag:
+            return 
+        
+        if group_detach:
+            tmp = cls()
+            setattr(tmp, modif_flag_str, True)
+            getattr(tmp, attr_prop_str)[:] = getattr(self, priv_attr_prop_str)
+            res[key_str] = [tmp]
+        else:
+            gen_changed = getattr(self, priv_attr_prop_str).nonzero()[0]
+            res[key_str] = []
+            for g_id in gen_changed:
+                tmp = cls()
+                setattr(tmp, modif_flag_str, True)
+                getattr(tmp, attr_prop_str)[g_id] = getattr(self, priv_attr_prop_str)[g_id]
+                res[key_str].append(tmp)
+        
+    def _aux_decompose_as_unary_actions_detachment(self,
+                                                   cls: Type[Self],
+                                                   group_detach: bool,
+                                                   res):
+        for el in cls.OBJ_SUPPORT_DETACH:
+            self._aux_daua_detachment(cls, group_detach, res, el)
+    
+    def _aux_decompose_as_unary_actions_switches(self,
+                                                 cls: Type[Self],
+                                                 group_switch: bool,
+                                                 res):
+        if (not self._modif_set_switch) and (not self._modif_change_switch):
+            return 
+        if group_switch:
+            if self._modif_set_switch:
+                tmp = cls()
+                tmp._modif_set_switch = True
+                tmp._set_switch_status[:] = self._private_set_switch_status
+                res["set_switch"] = [tmp]
+            if self._modif_change_switch:
+                tmp = cls()
+                tmp._modif_change_switch = True
+                tmp._change_switch_status[:] = self._private_change_switch_status
+                res["change_switch"] = [tmp]
+            return
+        
+        res["set_switch"] = []
+        res["change_switch"] = []
+        for sub_id in range(cls.n_sub):
+            switch_this_sub = cls.detailed_topo_desc.switches[:,cls.detailed_topo_desc.SUB_COL] == sub_id
+            if (self._private_set_switch_status is not None and 
+                (self._private_set_switch_status[switch_this_sub] != 0).any()):
+                tmp = cls()
+                tmp._modif_set_switch = True
+                tmp._set_switch_status[switch_this_sub] = self._private_set_switch_status[switch_this_sub]
+                res["set_switch"].append(tmp)
+            if (self._private_change_switch_status is not None and 
+                self._private_change_switch_status[switch_this_sub].any()):
+                tmp = cls()
+                tmp._modif_change_switch = True
+                tmp._change_switch_status[switch_this_sub] = self._private_change_switch_status[switch_this_sub]
+                res["change_switch"].append(tmp)
+        
+        for el in ["set_switch", "change_switch"]:
+            if len(res[el]) == 0:
+                del res[el]
             
     def decompose_as_unary_actions(self,
                                    group_topo=False,
                                    group_line_status=False,
                                    group_redispatch=True,
                                    group_storage=True,
-                                   group_curtail=True) -> Dict[Literal["change_bus",
-                                                                       "set_bus",
-                                                                       "change_line_status",
-                                                                       "set_line_status",
-                                                                       "redispatch",
-                                                                       "set_storage",
-                                                                       "curtail"],
-                                                               List["BaseAction"]]:
+                                   group_curtail=True,
+                                   group_detach=False,
+                                   group_switch=False,
+                                   ) -> Dict[Literal["change_bus",
+                                                     "set_bus",
+                                                     "change_line_status",
+                                                     "set_line_status",
+                                                     "redispatch",
+                                                     "set_storage",
+                                                     "curtail",
+                                                     "detach_load",
+                                                     "detach_gen",
+                                                     "detach_storage",
+                                                     "change_switch",
+                                                     "set_switch"],
+                                             List["BaseAction"]]:
         """This function allows to split a possibly "complex" action into its
         "unary" counterpart.
         
@@ -8325,7 +8429,7 @@ class BaseAction(GridObjects):
         not. Also, note that an action that acts on `set_line_status`
         and `change_line_status` is not considered as "unary" by this method.
         
-        This functions output a dictionnary with up to 7 keys:
+        This functions output a dictionnary with up to 11 keys:
         
         -  "change_bus" if the action affects the grid with `change_bus`. 
            In this case the value associated with this key is a list containing
@@ -8348,6 +8452,11 @@ class BaseAction(GridObjects):
         -  "curtail" if the action affects the grid with `curtail`
            In this case the value associated with this key is a list containing
            only action that performs `curtail`
+        - "detach_load"
+        - "detach_gen"
+        - "detach_storage"
+        - "change_switch"
+        - "set_switch"
 
         **NB** if the action is a "do nothing" action type, then this function will
         return an empty dictionary.
@@ -8427,7 +8536,12 @@ class BaseAction(GridObjects):
             "curtailment" instead of "powerline" and `set_line_status`, , by default True (meaning the value associated with 
             the key `curtail` will be a list of one element performing 
             a curtailment on all storage generators modified by the current action)
-
+        group_detach: bool, optional
+            Wether to aggretate the "detach" part of the action in one or
+            to split them (one "sub action" for each element detach)
+        group_switch: bool, optional
+            Wether to groupe switch action in one or to have a "sub action" per substations affected by switch.
+            
         Returns
         -------
         dict
@@ -8449,8 +8563,10 @@ class BaseAction(GridObjects):
             self._aux_decompose_as_unary_actions_storage(cls, group_storage, res)
         if self._modif_curtailment:
             self._aux_decompose_as_unary_actions_curtail(cls, group_curtail, res)
-            
-        # TODO detachment and switches !
+        if cls.detachment_is_allowed:
+            self._aux_decompose_as_unary_actions_detachment(cls, group_detach, res)
+        if cls.detailed_topo_desc is not None:
+            self._aux_decompose_as_unary_actions_switches(cls, group_switch, res)
         return res
 
     def _add_act_and_remove_line_status_only_set(self, other: "BaseAction") -> "BaseAction":

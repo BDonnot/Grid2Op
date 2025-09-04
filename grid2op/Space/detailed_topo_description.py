@@ -206,11 +206,11 @@ class DetailedTopoDescription(object):
         from grid2op.Space import AddDetailedTopoIEEE
         from grid2op.Backend import PandaPowerBackend  # or any other backend (*eg* lightsim2grid)
         
-        class PandaPowerBackendWithDetailedTopo(AddDetailedTopoIEEE, PandaPowerBackend):
+        class PandaPowerBackendWithDetailedTopoIEEE(AddDetailedTopoIEEE, PandaPowerBackend):
             pass
         
         env_name = "l2rpn_case14_sandbox"
-        env = grid2op.make(env_name, backend=PandaPowerBackendWithDetailedTopo())
+        env = grid2op.make(env_name, backend=PandaPowerBackendWithDetailedTopoIEEE())
         # do wathever you want
 
         

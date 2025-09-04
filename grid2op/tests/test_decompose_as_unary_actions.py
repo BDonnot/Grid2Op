@@ -6,18 +6,14 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of Grid2Op, Grid2Op a testbed platform to model sequential decision making in power systems.
 
-import copy
-import pdb
-import time
 import unittest
 import warnings
 
 import grid2op
 from grid2op.Parameters import Parameters
 from grid2op.dtypes import dt_float
-from grid2op.Action import PlayableAction, CompleteAction
-
-import warnings
+from grid2op.Action import PlayableAction
+from grid2op.Backend import PandaPowerBackendWithDetailedTopoIEEE
 
 # TODO check when there is also redispatching
 
@@ -32,7 +28,9 @@ class TestDecompUnary(unittest.TestCase):
             param.NO_OVERFLOW_DISCONNECTION = True
             self.env = grid2op.make(
                 "educ_case14_storage",
+                backend=PandaPowerBackendWithDetailedTopoIEEE(),
                 test=True,
+                allow_detachment=True,
                 action_class=PlayableAction,
                 _add_to_name=type(self).__name__,
             )
@@ -176,6 +174,72 @@ class TestDecompUnary(unittest.TestCase):
         assert res["curtail"][0]._curtail[4] == dt_float(0.8)
         assert res["curtail"][0]._curtail[5] == dt_float(0.7)
     
+    def test_detachment(self):
+        for attr_nm in ['gen', "load", "storage"]:
+            flag = f"detach_{attr_nm}"
+            act = self.env.action_space({flag: [0, 1]})
+            res = act.decompose_as_unary_actions(group_detach=False)
+            assert len(res) == 1
+            assert flag in res
+            assert len(res[flag]) == 2
+            assert getattr(res[flag][0], flag)[0]
+            assert not getattr(res[flag][0], flag)[1]
+            assert not getattr(res[flag][1], flag)[0]
+            assert getattr(res[flag][1], flag)[1]
+            
+            res = act.decompose_as_unary_actions(group_detach=True)
+            assert len(res) == 1
+            assert flag in res
+            assert len(res[flag]) == 1
+            assert getattr(res[flag][0], flag)[0]
+            assert getattr(res[flag][0], flag)[1]
+    
+    def test_set_switches(self):
+        # switch 0 and 62 are on substation 0
+        # switch 1 on substation 1
+        act = self.env.action_space({"set_switch": [(0, 1), (1, 1), (62, -1)]})
+        res = act.decompose_as_unary_actions(group_switch=False)
+        assert len(res) == 1
+        assert "set_switch" in res
+        assert len(res["set_switch"]) == 2, f'{len(res["set_switch"])} vs 2'
+        assert res["set_switch"][0]._set_switch_status[0] == 1
+        assert res["set_switch"][0]._set_switch_status[1] == 0
+        assert res["set_switch"][0]._set_switch_status[62] == -1
+        assert res["set_switch"][1]._set_switch_status[0] == 0
+        assert res["set_switch"][1]._set_switch_status[1] == 1
+        assert res["set_switch"][1]._set_switch_status[62] == 0
+        
+        res = act.decompose_as_unary_actions(group_switch=True)
+        assert len(res) == 1
+        assert "set_switch" in res
+        assert len(res["set_switch"]) == 1, f'{len(res["set_switch"])} vs 1'
+        assert res["set_switch"][0]._set_switch_status[0] == 1
+        assert res["set_switch"][0]._set_switch_status[1] == 1
+        assert res["set_switch"][0]._set_switch_status[62] == -1
+        
+    def test_change_switches(self):
+        # switch 0 and 62 are on substation 0
+        # switch 1 on substation 1
+        act = self.env.action_space({"change_switch": [0, 1, 62]})
+        res = act.decompose_as_unary_actions(group_switch=False)
+        assert len(res) == 1
+        assert "change_switch" in res
+        assert len(res["change_switch"]) == 2, f'{len(res["change_switch"])} vs 2'
+        assert res["change_switch"][0]._change_switch_status[0]
+        assert not res["change_switch"][0]._change_switch_status[1]
+        assert res["change_switch"][0]._change_switch_status[62]
+        assert not res["change_switch"][1]._change_switch_status[0]
+        assert res["change_switch"][1]._change_switch_status[1]
+        assert not res["change_switch"][1]._change_switch_status[62]
+        
+        res = act.decompose_as_unary_actions(group_switch=True)
+        assert len(res) == 1
+        assert "change_switch" in res
+        assert len(res["change_switch"]) == 1, f'{len(res["change_switch"])} vs 1'
+        assert res["change_switch"][0]._change_switch_status[0]
+        assert res["change_switch"][0]._change_switch_status[1]
+        assert res["change_switch"][0]._change_switch_status[62]
+        
     def test_all(self):
         act = self.env.action_space({"curtail": [(4, 0.8), (5, 0.7)],
                                      "set_storage": [(0, +1.), (1, -1.)],
