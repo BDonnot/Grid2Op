@@ -1901,6 +1901,17 @@ class BaseAction(GridObjects):
             and (not self._modif_change_switch)
         )
     
+    def _aux_store_lines_subs_impacted_in_cache(self,
+                                                _lines_impacted: np.ndarray,
+                                                _subs_impacted: np.ndarray):
+            # store the result in cache is asked too
+            self._lines_impacted = _lines_impacted
+            self._subs_impacted = _subs_impacted
+            
+            # prevent accidental modification
+            for arr in [self._lines_impacted, self._subs_impacted]:
+                arr.flags.writeable = False
+        
     def _aux_get_topo_impact_notopo(self, _store_in_cache: bool):
         cls = type(self)
         _lines_impacted = np.full(
@@ -1910,9 +1921,8 @@ class BaseAction(GridObjects):
             shape=cls.n_sub, fill_value=False, dtype=dt_bool
         )
         if _store_in_cache:
-            # store the result in cache is asked too
-            self._lines_impacted = _lines_impacted
-            self._subs_impacted = _subs_impacted
+            self._aux_store_lines_subs_impacted_in_cache(_lines_impacted, _subs_impacted)
+            
         return _lines_impacted, _subs_impacted
     
     def _aux_get_topo_impact_get_isnotconnected_init(self, powerline_status):
@@ -2165,12 +2175,7 @@ class BaseAction(GridObjects):
                         
         if _store_in_cache:
             # store the results in cache if asked too
-            self._lines_impacted = _lines_impacted
-            self._subs_impacted = _subs_impacted
-            
-            # prevent accidental modification
-            for arr in [self._lines_impacted, self._subs_impacted]:
-                arr.flag.writeable = False
+            self._aux_store_lines_subs_impacted_in_cache(_lines_impacted, _subs_impacted)
             
         return _lines_impacted, _subs_impacted
 
